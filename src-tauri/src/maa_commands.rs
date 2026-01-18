@@ -772,3 +772,100 @@ pub fn maa_is_running(state: State<MaaState>, instance_id: String) -> Result<boo
     let running = unsafe { (lib.maa_tasker_running)(tasker) };
     Ok(running != 0)
 }
+
+/// 发起截图请求
+#[tauri::command]
+pub fn maa_post_screencap(state: State<MaaState>, instance_id: String) -> Result<i64, String> {
+    let guard = MAA_LIBRARY.lock().map_err(|e| e.to_string())?;
+    let lib = guard.as_ref().ok_or("MaaFramework not initialized")?;
+    
+    let controller = {
+        let instances = state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get(&instance_id).ok_or("Instance not found")?;
+        instance.controller.ok_or("Controller not connected")?
+    };
+    
+    let screencap_id = unsafe { (lib.maa_controller_post_screencap)(controller) };
+    
+    if screencap_id == MAA_INVALID_ID {
+        return Err("Failed to post screencap".to_string());
+    }
+    
+    Ok(screencap_id)
+}
+
+/// 等待截图完成
+#[tauri::command]
+pub async fn maa_screencap_wait(
+    state: State<'_, MaaState>,
+    instance_id: String,
+    screencap_id: i64,
+) -> Result<bool, String> {
+    let guard = MAA_LIBRARY.lock().map_err(|e| e.to_string())?;
+    let lib = guard.as_ref().ok_or("MaaFramework not initialized")?;
+    
+    let controller = {
+        let instances = state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get(&instance_id).ok_or("Instance not found")?;
+        instance.controller.ok_or("Controller not connected")?
+    };
+    
+    let status = unsafe { (lib.maa_controller_wait)(controller, screencap_id) };
+    
+    Ok(status == MAA_STATUS_SUCCEEDED)
+}
+
+/// 获取缓存的截图（返回 base64 编码的 PNG 图像）
+#[tauri::command]
+pub fn maa_get_cached_image(state: State<MaaState>, instance_id: String) -> Result<String, String> {
+    let guard = MAA_LIBRARY.lock().map_err(|e| e.to_string())?;
+    let lib = guard.as_ref().ok_or("MaaFramework not initialized")?;
+    
+    let controller = {
+        let instances = state.instances.lock().map_err(|e| e.to_string())?;
+        let instance = instances.get(&instance_id).ok_or("Instance not found")?;
+        instance.controller.ok_or("Controller not connected")?
+    };
+    
+    unsafe {
+        // 创建图像缓冲区
+        let image_buffer = (lib.maa_image_buffer_create)();
+        if image_buffer.is_null() {
+            return Err("Failed to create image buffer".to_string());
+        }
+        
+        // 确保缓冲区被释放
+        struct ImageBufferGuard<'a> {
+            buffer: *mut MaaImageBuffer,
+            lib: &'a MaaLibrary,
+        }
+        impl Drop for ImageBufferGuard<'_> {
+            fn drop(&mut self) {
+                unsafe { (self.lib.maa_image_buffer_destroy)(self.buffer); }
+            }
+        }
+        let _guard = ImageBufferGuard { buffer: image_buffer, lib };
+        
+        // 获取缓存的图像
+        let success = (lib.maa_controller_cached_image)(controller, image_buffer);
+        if success == 0 {
+            return Err("Failed to get cached image".to_string());
+        }
+        
+        // 获取编码后的图像数据
+        let encoded_ptr = (lib.maa_image_buffer_get_encoded)(image_buffer);
+        let encoded_size = (lib.maa_image_buffer_get_encoded_size)(image_buffer);
+        
+        if encoded_ptr.is_null() || encoded_size == 0 {
+            return Err("No image data available".to_string());
+        }
+        
+        // 复制数据并转换为 base64
+        let data = std::slice::from_raw_parts(encoded_ptr, encoded_size as usize);
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let base64_str = STANDARD.encode(data);
+        
+        // 返回带 data URL 前缀的 base64 字符串
+        Ok(format!("data:image/png;base64,{}", base64_str))
+    }
+}

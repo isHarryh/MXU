@@ -238,6 +238,36 @@ export const maaService = {
     if (!isTauri()) return false;
     return await invoke<boolean>('maa_is_running', { instanceId });
   },
+
+  /**
+   * 发起截图请求
+   * @param instanceId 实例 ID
+   * @returns 截图请求 ID
+   */
+  async postScreencap(instanceId: string): Promise<number> {
+    if (!isTauri()) return -1;
+    return await invoke<number>('maa_post_screencap', { instanceId });
+  },
+
+  /**
+   * 等待截图完成
+   * @param instanceId 实例 ID
+   * @param screencapId 截图请求 ID
+   */
+  async screencapWait(instanceId: string, screencapId: number): Promise<boolean> {
+    if (!isTauri()) return false;
+    return await invoke<boolean>('maa_screencap_wait', { instanceId, screencapId });
+  },
+
+  /**
+   * 获取缓存的截图
+   * @param instanceId 实例 ID
+   * @returns base64 编码的图像 data URL
+   */
+  async getCachedImage(instanceId: string): Promise<string> {
+    if (!isTauri()) return '';
+    return await invoke<string>('maa_get_cached_image', { instanceId });
+  },
 };
 
 export default maaService;

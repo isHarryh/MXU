@@ -121,6 +121,10 @@ export default {
     autoRefresh: '自动刷新',
     noScreenshot: '暂无截图',
     clickToRefresh: '点击刷新',
+    startStream: '开始实时流',
+    stopStream: '停止实时流',
+    refreshFailed: '截图刷新失败',
+    connectFirst: '请先连接设备',
   },
 
   // 日志/信息流

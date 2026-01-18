@@ -121,6 +121,10 @@ export default {
     autoRefresh: 'Auto Refresh',
     noScreenshot: 'No screenshot',
     clickToRefresh: 'Click to refresh',
+    startStream: 'Start Live Stream',
+    stopStream: 'Stop Live Stream',
+    refreshFailed: 'Screenshot refresh failed',
+    connectFirst: 'Please connect a device first',
   },
 
   // Logs

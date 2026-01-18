@@ -68,6 +68,7 @@ pub enum MaaResource {}
 pub enum MaaController {}
 pub enum MaaTasker {}
 pub enum MaaStringBuffer {}
+pub enum MaaImageBuffer {}
 pub enum MaaToolkitAdbDeviceList {}
 pub enum MaaToolkitAdbDevice {}
 pub enum MaaToolkitDesktopWindowList {}
@@ -105,8 +106,14 @@ type FnMaaControllerWait = unsafe extern "C" fn(*mut MaaController, MaaId) -> Ma
 type FnMaaControllerConnected = unsafe extern "C" fn(*mut MaaController) -> MaaBool;
 type FnMaaControllerSetOption = unsafe extern "C" fn(*mut MaaController, MaaCtrlOption, *const c_void, MaaSize) -> MaaBool;
 type FnMaaControllerPostScreencap = unsafe extern "C" fn(*mut MaaController) -> MaaId;
-type FnMaaControllerCachedImage = unsafe extern "C" fn(*mut MaaController, *mut c_void) -> MaaBool;
+type FnMaaControllerCachedImage = unsafe extern "C" fn(*mut MaaController, *mut MaaImageBuffer) -> MaaBool;
 type FnMaaControllerAddSink = unsafe extern "C" fn(*mut MaaController, MaaEventCallback, *mut c_void) -> MaaId;
+
+// ImageBuffer
+type FnMaaImageBufferCreate = unsafe extern "C" fn() -> *mut MaaImageBuffer;
+type FnMaaImageBufferDestroy = unsafe extern "C" fn(*mut MaaImageBuffer);
+type FnMaaImageBufferGetEncoded = unsafe extern "C" fn(*const MaaImageBuffer) -> *const u8;
+type FnMaaImageBufferGetEncodedSize = unsafe extern "C" fn(*const MaaImageBuffer) -> MaaSize;
 
 type FnMaaTaskerCreate = unsafe extern "C" fn() -> *mut MaaTasker;
 type FnMaaTaskerDestroy = unsafe extern "C" fn(*mut MaaTasker);
@@ -176,6 +183,12 @@ pub struct MaaLibrary {
     pub maa_controller_post_screencap: FnMaaControllerPostScreencap,
     pub maa_controller_cached_image: FnMaaControllerCachedImage,
     pub maa_controller_add_sink: FnMaaControllerAddSink,
+    
+    // ImageBuffer
+    pub maa_image_buffer_create: FnMaaImageBufferCreate,
+    pub maa_image_buffer_destroy: FnMaaImageBufferDestroy,
+    pub maa_image_buffer_get_encoded: FnMaaImageBufferGetEncoded,
+    pub maa_image_buffer_get_encoded_size: FnMaaImageBufferGetEncodedSize,
     
     // Tasker
     pub maa_tasker_create: FnMaaTaskerCreate,
@@ -281,6 +294,12 @@ impl MaaLibrary {
                 maa_controller_post_screencap: load_fn!(framework_lib, "MaaControllerPostScreencap"),
                 maa_controller_cached_image: load_fn!(framework_lib, "MaaControllerCachedImage"),
                 maa_controller_add_sink: load_fn!(framework_lib, "MaaControllerAddSink"),
+                
+                // ImageBuffer
+                maa_image_buffer_create: load_fn!(framework_lib, "MaaImageBufferCreate"),
+                maa_image_buffer_destroy: load_fn!(framework_lib, "MaaImageBufferDestroy"),
+                maa_image_buffer_get_encoded: load_fn!(framework_lib, "MaaImageBufferGetEncoded"),
+                maa_image_buffer_get_encoded_size: load_fn!(framework_lib, "MaaImageBufferGetEncodedSize"),
                 
                 // Tasker
                 maa_tasker_create: load_fn!(framework_lib, "MaaTaskerCreate"),

@@ -27,6 +27,9 @@ pub fn run() {
             maa_commands::maa_get_task_status,
             maa_commands::maa_stop_task,
             maa_commands::maa_is_running,
+            maa_commands::maa_post_screencap,
+            maa_commands::maa_screencap_wait,
+            maa_commands::maa_get_cached_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
