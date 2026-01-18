@@ -82,8 +82,8 @@ export function TabBar() {
             className={clsx(
               'group flex items-center gap-2 h-full px-4 cursor-pointer border-r border-border transition-colors min-w-[120px] max-w-[200px]',
               instance.id === activeInstanceId
-                ? 'bg-bg-primary text-text-primary'
-                : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover'
+                ? 'bg-bg-primary text-accent border-b-2 border-b-accent'
+                : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover border-b-2 border-b-transparent'
             )}
           >
             {editingId === instance.id ? (
