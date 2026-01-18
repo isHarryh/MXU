@@ -167,3 +167,24 @@ body {
 .zoom-in-95 {
   --tw-enter-scale: 0.95;
 }
+
+/* Bell shake animation */
+@keyframes bellShake {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  10%, 30%, 50% {
+    transform: rotate(15deg);
+  }
+  20%, 40% {
+    transform: rotate(-15deg);
+  }
+  60% {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-bell-shake {
+  animation: bellShake 1.5s ease-in-out infinite;
+  transform-origin: top center;
+}

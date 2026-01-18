@@ -40,6 +40,26 @@ function getOS(): string {
   return '';
 }
 
+// 构建 User-Agent 字符串
+function buildUserAgent(): string {
+  const version = typeof __MXU_VERSION__ !== 'undefined' ? __MXU_VERSION__ : 'unknown';
+  const os = getOS();
+  const arch = getArch();
+  
+  // 构建平台信息字符串
+  let platformInfo = '';
+  if (os === 'windows') {
+    platformInfo = 'Windows NT 10.0; Win64; x64';
+  } else if (os === 'darwin') {
+    platformInfo = 'Macintosh; Intel Mac OS X';
+  } else if (os === 'linux') {
+    platformInfo = 'X11; Linux x86_64';
+  }
+  
+  // 格式: MXU/版本号 (平台信息) Tauri/2.0
+  return `MXU/${version} (${platformInfo}; ${arch}) Tauri/2.0`;
+}
+
 // 获取 CPU 架构
 function getArch(): string {
   // 浏览器环境难以准确获取架构，默认使用 x64
@@ -89,7 +109,11 @@ export async function checkUpdate(options: CheckUpdateOptions): Promise<UpdateIn
   
   try {
     // 使用 Tauri HTTP 客户端发送请求，绑过浏览器 CORS 限制
-    const response = await tauriFetch(url);
+    const response = await tauriFetch(url, {
+      headers: {
+        'User-Agent': buildUserAgent(),
+      },
+    });
     const data: MirrorChyanApiResponse = await response.json();
     
     if (data.code !== 0) {

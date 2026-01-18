@@ -214,6 +214,9 @@ export default {
     dismiss: 'Skip This Version',
     noReleaseNotes: 'No release notes available',
     checkFailed: 'Failed to check for updates',
+    downloading: 'Downloading',
+    downloadComplete: 'Download Complete',
+    viewDetails: 'View Details',
   },
 
   // Error messages

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Plus, X, Settings, Sun, Moon, Check, LayoutGrid, Copy, Edit3, XCircle, GripVertical, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PanelRightClose, Bell } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { ContextMenu, useContextMenu, type MenuItem } from './ContextMenu';
+import { UpdatePanel } from './UpdatePanel';
 import clsx from 'clsx';
 
 export function TabBar() {
@@ -14,7 +15,9 @@ export function TabBar() {
     draggedIndex: number;
     dragOverIndex: number | null;
   }>({ isDragging: false, draggedIndex: -1, dragOverIndex: null });
+  const [showUpdatePanel, setShowUpdatePanel] = useState(false);
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const bellButtonRef = useRef<HTMLButtonElement>(null);
   
   const {
     instances,
@@ -34,7 +37,6 @@ export function TabBar() {
     dashboardView,
     toggleDashboardView,
     updateInfo,
-    setShowUpdateDialog,
   } = useAppStore();
   
   const { state: menuState, show: showMenu, hide: hideMenu } = useContextMenu();
@@ -345,12 +347,21 @@ export function TabBar() {
         {/* 更新通知图标 */}
         {updateInfo?.hasUpdate && (
           <button
-            onClick={() => setShowUpdateDialog(true)}
-            className="relative p-2 rounded-md hover:bg-bg-hover transition-colors"
+            ref={bellButtonRef}
+            onClick={() => setShowUpdatePanel(!showUpdatePanel)}
+            className={clsx(
+              'relative p-2 rounded-md transition-colors',
+              showUpdatePanel ? 'bg-accent/10' : 'hover:bg-bg-hover'
+            )}
             title={t('mirrorChyan.newVersion')}
           >
-            <Bell className="w-4 h-4 text-accent" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-error rounded-full animate-pulse" />
+            <Bell className={clsx(
+              'w-4 h-4 text-accent',
+              !showUpdatePanel && 'animate-bell-shake'
+            )} />
+            {!showUpdatePanel && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-error rounded-full animate-pulse" />
+            )}
           </button>
         )}
         <button
@@ -391,6 +402,14 @@ export function TabBar() {
           items={menuState.items}
           position={menuState.position}
           onClose={hideMenu}
+        />
+      )}
+
+      {/* 更新面板 */}
+      {showUpdatePanel && (
+        <UpdatePanel
+          onClose={() => setShowUpdatePanel(false)}
+          anchorRef={bellButtonRef}
         />
       )}
     </div>
