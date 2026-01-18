@@ -10,7 +10,9 @@ import {
   Loader2,
   Bug,
   RefreshCw,
+  Maximize2,
 } from 'lucide-react';
+import { defaultWindowSize } from '@/types/config';
 import { useAppStore } from '@/stores/appStore';
 import { setLanguage as setI18nLanguage } from '@/i18n';
 import { resolveContent, resolveIconPath, simpleMarkdownToHtml, resolveI18nText } from '@/services/contentResolver';
@@ -130,6 +132,24 @@ export function SettingsPage() {
   // 调试：清空日志
   const handleClearLog = () => {
     setDebugLog([]);
+  };
+
+  // 调试：重置窗口尺寸
+  const handleResetWindowSize = async () => {
+    if (!isTauri()) {
+      addDebugLog('仅 Tauri 环境支持重置窗口尺寸');
+      return;
+    }
+    
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const { LogicalSize } = await import('@tauri-apps/api/dpi');
+      const currentWindow = getCurrentWindow();
+      await currentWindow.setSize(new LogicalSize(defaultWindowSize.width, defaultWindowSize.height));
+      addDebugLog(`窗口尺寸已重置为 ${defaultWindowSize.width}x${defaultWindowSize.height}`);
+    } catch (err) {
+      addDebugLog(`重置窗口尺寸失败: ${err}`);
+    }
   };
 
   const projectName =
@@ -276,6 +296,13 @@ export function SettingsPage() {
                 >
                   <RefreshCw className="w-4 h-4" />
                   刷新 UI
+                </button>
+                <button
+                  onClick={handleResetWindowSize}
+                  className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-tertiary hover:bg-bg-hover rounded-lg transition-colors"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                  重置窗口尺寸
                 </button>
                 <button
                   onClick={handleClearLog}

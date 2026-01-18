@@ -44,6 +44,44 @@ async function setWindowTitle(title: string) {
   }
 }
 
+/**
+ * 设置窗口大小
+ */
+async function setWindowSize(width: number, height: number) {
+  if (isTauri()) {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const { LogicalSize } = await import('@tauri-apps/api/dpi');
+      const currentWindow = getCurrentWindow();
+      await currentWindow.setSize(new LogicalSize(width, height));
+    } catch (err) {
+      log.warn('设置窗口大小失败:', err);
+    }
+  }
+}
+
+/**
+ * 获取当前窗口大小
+ */
+async function getWindowSize(): Promise<{ width: number; height: number } | null> {
+  if (isTauri()) {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const currentWindow = getCurrentWindow();
+      const size = await currentWindow.innerSize();
+      const scaleFactor = await currentWindow.scaleFactor();
+      // 转换为逻辑像素
+      return {
+        width: Math.round(size.width / scaleFactor),
+        height: Math.round(size.height / scaleFactor),
+      };
+    } catch (err) {
+      log.warn('获取窗口大小失败:', err);
+    }
+  }
+  return null;
+}
+
 function App() {
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [loadingState, setLoadingState] = useState<LoadingState>('loading');
@@ -64,6 +102,7 @@ function App() {
     language,
     sidePanelExpanded,
     dashboardView,
+    setWindowSize: setWindowSizeStore,
   } = useAppStore();
 
   const initialized = useRef(false);
@@ -119,6 +158,11 @@ function App() {
       if (config.instances.length > 0) {
         importConfig(config);
       }
+      
+      // 应用保存的窗口大小
+      if (config.settings.windowSize) {
+        await setWindowSize(config.settings.windowSize.width, config.settings.windowSize.height);
+      }
 
       log.info('加载完成, 项目:', result.interface.name);
       setLoadingState('success');
@@ -153,6 +197,47 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  // 监听窗口大小变化
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let unlisten: (() => void) | null = null;
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const setupListener = async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const currentWindow = getCurrentWindow();
+
+        unlisten = await currentWindow.onResized(async () => {
+          // 防抖处理，避免频繁保存
+          if (resizeTimeout) {
+            clearTimeout(resizeTimeout);
+          }
+          resizeTimeout = setTimeout(async () => {
+            const size = await getWindowSize();
+            if (size) {
+              setWindowSizeStore(size);
+            }
+          }, 500);
+        });
+      } catch (err) {
+        log.warn('监听窗口大小变化失败:', err);
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+    };
+  }, [setWindowSizeStore]);
 
   // 禁用浏览器默认右键菜单（让自定义菜单生效）
   useEffect(() => {

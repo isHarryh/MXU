@@ -35,10 +35,17 @@ export interface SavedInstance {
   tasks: SavedTask[];
 }
 
+// 窗口大小配置
+export interface WindowSize {
+  width: number;
+  height: number;
+}
+
 // 应用设置
 export interface AppSettings {
   theme: 'light' | 'dark';
   language: 'zh-CN' | 'en-US';
+  windowSize?: WindowSize;
 }
 
 // MXU 配置文件完整结构
@@ -48,6 +55,12 @@ export interface MxuConfig {
   settings: AppSettings;
 }
 
+// 默认窗口大小
+export const defaultWindowSize: WindowSize = {
+  width: 1000,
+  height: 600,
+};
+
 // 默认配置
 export const defaultConfig: MxuConfig = {
   version: '1.0',
@@ -55,5 +68,6 @@ export const defaultConfig: MxuConfig = {
   settings: {
     theme: 'light',
     language: 'zh-CN',
+    windowSize: defaultWindowSize,
   },
 };

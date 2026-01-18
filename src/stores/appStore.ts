@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { ProjectInterface, Instance, SelectedTask, OptionValue, TaskItem, OptionDefinition, SavedDeviceInfo } from '@/types/interface';
-import type { MxuConfig } from '@/types/config';
+import type { MxuConfig, WindowSize } from '@/types/config';
+import { defaultWindowSize } from '@/types/config';
 import type { ConnectionStatus, TaskStatus, AdbDevice, Win32Window } from '@/types/maa';
 import { saveConfig } from '@/services/configService';
 
@@ -117,6 +118,10 @@ interface AppState {
   dashboardView: boolean;
   setDashboardView: (enabled: boolean) => void;
   toggleDashboardView: () => void;
+  
+  // 窗口大小
+  windowSize: WindowSize;
+  setWindowSize: (size: WindowSize) => void;
 }
 
 // 生成唯一 ID
@@ -566,6 +571,7 @@ export const useAppStore = create<AppState>()(
           selectedController,
           selectedResource,
           nextInstanceNumber: maxNumber + 1,
+          windowSize: config.settings.windowSize || defaultWindowSize,
         });
         
         document.documentElement.classList.toggle('dark', config.settings.theme === 'dark');
@@ -671,6 +677,10 @@ export const useAppStore = create<AppState>()(
       dashboardView: false,
       setDashboardView: (enabled) => set({ dashboardView: enabled }),
       toggleDashboardView: () => set((state) => ({ dashboardView: !state.dashboardView })),
+      
+      // 窗口大小
+      windowSize: defaultWindowSize,
+      setWindowSize: (size) => set({ windowSize: size }),
     })
   )
 );
@@ -699,6 +709,7 @@ function generateConfig(): MxuConfig {
     settings: {
       theme: state.theme,
       language: state.language,
+      windowSize: state.windowSize,
     },
   };
 }
@@ -724,6 +735,7 @@ useAppStore.subscribe(
     activeInstanceId: state.activeInstanceId,
     theme: state.theme,
     language: state.language,
+    windowSize: state.windowSize,
   }),
   () => {
     debouncedSaveConfig();
