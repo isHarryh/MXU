@@ -14,6 +14,13 @@ const isTauri = () => {
   return typeof window !== 'undefined' && '__TAURI__' in window;
 };
 
+/**
+ * 获取 exe 所在目录的绝对路径（Tauri 环境）
+ */
+async function getExeDir(): Promise<string> {
+  return await invoke<string>('get_exe_dir');
+}
+
 // ============================================================================
 // Tauri 环境：通过 Rust 读取本地文件
 // ============================================================================
@@ -155,22 +162,27 @@ function getDirectoryFromPath(filePath: string): string {
 /**
  * 加载 interface.json
  * 
- * basePath 是 interface.json 所在目录，所有相对路径（翻译文件、图标等）都基于此目录
+ * basePath 是 interface.json 所在目录的绝对路径，所有相对路径（翻译文件、资源、图标等）都基于此目录
  * 
- * Tauri 环境：从 exe 同目录加载
- * 浏览器环境：从 HTTP 根路径加载（需要 public/interface.json）
+ * Tauri 环境：从 exe 同目录加载，basePath 为 exe 目录的绝对路径
+ * 浏览器环境：从 HTTP 根路径加载（需要 public/interface.json），basePath 为空
  */
 export async function autoLoadInterface(): Promise<LoadResult> {
   // interface.json 的路径（将来可配置）
   const interfacePath = 'interface.json';
-  // basePath 是 interface.json 所在目录
-  const basePath = getDirectoryFromPath(interfacePath);
+  // 相对 basePath（interface.json 所在目录的相对路径部分）
+  const relativeBasePath = getDirectoryFromPath(interfacePath);
 
   // Tauri 环境：通过 Rust 读取本地文件
   if (isTauri()) {
     log.info('Tauri 环境，加载 interface.json');
+    // 获取 exe 目录的绝对路径作为 basePath
+    const exeDir = await getExeDir();
+    const basePath = relativeBasePath ? `${exeDir}/${relativeBasePath}` : exeDir;
+    log.info('basePath (绝对路径):', basePath);
+    
     const pi = await loadInterfaceFromLocal(interfacePath);
-    const translations = await loadTranslationsFromLocal(pi, basePath);
+    const translations = await loadTranslationsFromLocal(pi, relativeBasePath);
     return { interface: pi, translations, basePath };
   }
 
@@ -178,8 +190,8 @@ export async function autoLoadInterface(): Promise<LoadResult> {
   const httpPath = `/${interfacePath}`;
   if (await httpFileExists(httpPath)) {
     const pi = await loadInterfaceFromHttp(httpPath);
-    const translations = await loadTranslationsFromHttp(pi, basePath ? `/${basePath}` : '');
-    return { interface: pi, translations, basePath };
+    const translations = await loadTranslationsFromHttp(pi, relativeBasePath ? `/${relativeBasePath}` : '');
+    return { interface: pi, translations, basePath: relativeBasePath };
   }
 
   throw new Error('未找到 interface.json 文件，请确保程序同目录下存在 interface.json');

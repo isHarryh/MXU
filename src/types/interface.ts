@@ -26,6 +26,8 @@ export interface AgentConfig {
   child_exec: string;
   child_args?: string[];
   identifier?: string;
+  /** 连接超时时间（毫秒），-1 表示无限等待 */
+  timeout?: number;
 }
 
 export type ControllerType = 'Adb' | 'Win32' | 'PlayCover' | 'Gamepad';

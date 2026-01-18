@@ -312,7 +312,11 @@ export function ConnectionPanel() {
 
     try {
       await maaService.createInstance(instanceId).catch(() => {});
-      const resourcePaths = currentResource.path.map(p => `${basePath}/${p}`);
+      // 拼接绝对路径，移除相对路径前缀 "./" 或 "."
+      const resourcePaths = currentResource.path.map(p => {
+        const cleanPath = p.replace(/^\.\//, '').replace(/^\.\\/, '');
+        return `${basePath}/${cleanPath}`;
+      });
       await maaService.loadResource(instanceId, resourcePaths);
       setIsResourceLoaded(true);
       setInstanceResourceLoaded(instanceId, true);

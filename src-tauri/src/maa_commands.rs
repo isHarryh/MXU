@@ -3,9 +3,11 @@
 //! 提供前端调用的 MaaFramework 功能接口
 
 use std::collections::HashMap;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::thread;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -904,6 +906,8 @@ pub struct AgentConfig {
     pub child_exec: String,
     pub child_args: Option<Vec<String>>,
     pub identifier: Option<String>,
+    /// 连接超时时间（毫秒），-1 表示无限等待
+    pub timeout: Option<i64>,
 }
 
 /// 任务配置
@@ -998,14 +1002,98 @@ pub async fn maa_start_tasks(
         
         println!("[MaaCommands] Starting child process: {} {:?} in {}", agent.child_exec, args, cwd);
         
-        // 启动子进程
-        let child = Command::new(&agent.child_exec)
+        // 将相对路径转换为绝对路径（Windows 的 Command 不能正确处理 Unix 风格相对路径）
+        let exec_path = std::path::Path::new(&cwd).join(&agent.child_exec);
+        let exec_path = exec_path.canonicalize().unwrap_or(exec_path);
+        println!("[MaaCommands] Resolved executable path: {:?}, exists: {}", exec_path, exec_path.exists());
+        
+        // 启动子进程，捕获 stdout 和 stderr
+        // 设置 PYTHONIOENCODING 强制 Python 以 UTF-8 编码输出，避免 Windows 系统代码页乱码
+        println!("[MaaCommands] Spawning child process...");
+        let spawn_result = Command::new(&exec_path)
             .args(&args)
             .current_dir(&cwd)
-            .spawn()
-            .map_err(|e| format!("Failed to start agent process: {}", e))?;
+            .env("PYTHONIOENCODING", "utf-8")
+            .env("PYTHONUTF8", "1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
+        
+        let mut child = match spawn_result {
+            Ok(c) => {
+                println!("[MaaCommands] Spawn succeeded!");
+                c
+            }
+            Err(e) => {
+                let err_msg = format!("Failed to start agent process: {} (exec: {:?}, cwd: {})", e, exec_path, cwd);
+                println!("[MaaCommands] {}", err_msg);
+                return Err(err_msg);
+            }
+        };
         
         println!("[MaaCommands] Agent child process started, pid: {:?}", child.id());
+        
+        // 在单独线程中读取 stdout（使用有损转换处理非UTF-8输出）
+        if let Some(stdout) = child.stdout.take() {
+            thread::spawn(move || {
+                let mut reader = BufReader::new(stdout);
+                let mut buffer = Vec::new();
+                loop {
+                    buffer.clear();
+                    match reader.read_until(b'\n', &mut buffer) {
+                        Ok(0) => break,  // EOF
+                        Ok(_) => {
+                            // 移除末尾换行符后使用有损转换
+                            if buffer.ends_with(&[b'\n']) {
+                                buffer.pop();
+                            }
+                            if buffer.ends_with(&[b'\r']) {
+                                buffer.pop();
+                            }
+                            let line = String::from_utf8_lossy(&buffer);
+                            println!("[Agent stdout] {}", line);
+                        }
+                        Err(e) => {
+                            eprintln!("[Agent stdout error] {}", e);
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 在单独线程中读取 stderr（使用有损转换处理非UTF-8输出）
+        if let Some(stderr) = child.stderr.take() {
+            thread::spawn(move || {
+                let mut reader = BufReader::new(stderr);
+                let mut buffer = Vec::new();
+                loop {
+                    buffer.clear();
+                    match reader.read_until(b'\n', &mut buffer) {
+                        Ok(0) => break,  // EOF
+                        Ok(_) => {
+                            if buffer.ends_with(&[b'\n']) {
+                                buffer.pop();
+                            }
+                            if buffer.ends_with(&[b'\r']) {
+                                buffer.pop();
+                            }
+                            let line = String::from_utf8_lossy(&buffer);
+                            eprintln!("[Agent stderr] {}", line);
+                        }
+                        Err(e) => {
+                            eprintln!("[Agent stderr error] {}", e);
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 设置连接超时（-1 表示无限等待）
+        let timeout_ms = agent.timeout.unwrap_or(-1);
+        println!("[MaaCommands] Setting agent connect timeout: {} ms", timeout_ms);
+        unsafe { (lib.maa_agent_client_set_timeout)(agent_client, timeout_ms); }
         
         // 等待连接
         let connected = unsafe { (lib.maa_agent_client_connect)(agent_client) };

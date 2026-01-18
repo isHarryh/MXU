@@ -156,6 +156,7 @@ type FnMaaAgentClientIdentifier = unsafe extern "C" fn(*mut MaaAgentClient, *mut
 type FnMaaAgentClientBindResource = unsafe extern "C" fn(*mut MaaAgentClient, *mut MaaResource) -> MaaBool;
 type FnMaaAgentClientConnect = unsafe extern "C" fn(*mut MaaAgentClient) -> MaaBool;
 type FnMaaAgentClientDisconnect = unsafe extern "C" fn(*mut MaaAgentClient) -> MaaBool;
+type FnMaaAgentClientSetTimeout = unsafe extern "C" fn(*mut MaaAgentClient, i64) -> MaaBool;
 
 /// MaaFramework 库包装器
 pub struct MaaLibrary {
@@ -243,6 +244,7 @@ pub struct MaaLibrary {
     pub maa_agent_client_bind_resource: FnMaaAgentClientBindResource,
     pub maa_agent_client_connect: FnMaaAgentClientConnect,
     pub maa_agent_client_disconnect: FnMaaAgentClientDisconnect,
+    pub maa_agent_client_set_timeout: FnMaaAgentClientSetTimeout,
 }
 
 // 注意：函数指针是 Send 和 Sync 的
@@ -396,6 +398,7 @@ impl MaaLibrary {
                 maa_agent_client_bind_resource: load_fn!(agent_client_lib, "MaaAgentClientBindResource"),
                 maa_agent_client_connect: load_fn!(agent_client_lib, "MaaAgentClientConnect"),
                 maa_agent_client_disconnect: load_fn!(agent_client_lib, "MaaAgentClientDisconnect"),
+                maa_agent_client_set_timeout: load_fn!(agent_client_lib, "MaaAgentClientSetTimeout"),
                 
                 _framework_lib: framework_lib,
                 _toolkit_lib: toolkit_lib,

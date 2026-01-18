@@ -230,6 +230,7 @@ export function Toolbar({ showAddPanel, onToggleAddPanel }: ToolbarProps) {
             child_exec: projectInterface.agent.child_exec,
             child_args: projectInterface.agent.child_args,
             identifier: projectInterface.agent.identifier,
+            timeout: projectInterface.agent.timeout,
           };
         }
 
