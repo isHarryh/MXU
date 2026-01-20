@@ -85,6 +85,18 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Update version
+        shell: bash
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          # Update package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          # Update tauri.conf.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          # Update Cargo.toml (only the package version at line start, not dependency versions)
+          sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          echo "Updated version to $VERSION"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -143,6 +155,17 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Update version
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          # Update package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          # Update tauri.conf.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          # Update Cargo.toml (only the package version at line start, not dependency versions)
+          sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          echo "Updated version to $VERSION"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -194,6 +217,17 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install
+
+      - name: Update version
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          # Update package.json
+          sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          # Update tauri.conf.json
+          sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          # Update Cargo.toml (only the package version at line start, not dependency versions)
+          sed -i '' "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          echo "Updated version to $VERSION"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
