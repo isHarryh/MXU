@@ -176,6 +176,10 @@ interface AppState {
   screenshotFrameRate: ScreenshotFrameRate;
   setScreenshotFrameRate: (rate: ScreenshotFrameRate) => void;
   
+  // Welcome 弹窗显示记录
+  welcomeShownHash: string;
+  setWelcomeShownHash: (hash: string) => void;
+  
   // 更新检查状态
   updateInfo: UpdateInfo | null;
   updateCheckLoading: boolean;
@@ -897,6 +901,7 @@ export const useAppStore = create<AppState>()(
           connectionPanelExpanded: config.settings.connectionPanelExpanded ?? true,
           screenshotPanelExpanded: config.settings.screenshotPanelExpanded ?? true,
           screenshotFrameRate: config.settings.screenshotFrameRate ?? defaultScreenshotFrameRate,
+          welcomeShownHash: config.settings.welcomeShownHash ?? '',
           recentlyClosed: config.recentlyClosed || [],
         });
         
@@ -1071,6 +1076,10 @@ export const useAppStore = create<AppState>()(
       // 实时截图帧率设置
       screenshotFrameRate: defaultScreenshotFrameRate,
       setScreenshotFrameRate: (rate) => set({ screenshotFrameRate: rate }),
+      
+      // Welcome 弹窗显示记录
+      welcomeShownHash: '',
+      setWelcomeShownHash: (hash) => set({ welcomeShownHash: hash }),
       
       // 更新检查状态
       updateInfo: null,
@@ -1383,6 +1392,7 @@ function generateConfig(): MxuConfig {
       connectionPanelExpanded: state.connectionPanelExpanded,
       screenshotPanelExpanded: state.screenshotPanelExpanded,
       screenshotFrameRate: state.screenshotFrameRate,
+      welcomeShownHash: state.welcomeShownHash,
     },
     recentlyClosed: state.recentlyClosed,
   };
@@ -1417,6 +1427,7 @@ useAppStore.subscribe(
     connectionPanelExpanded: state.connectionPanelExpanded,
     screenshotPanelExpanded: state.screenshotPanelExpanded,
     screenshotFrameRate: state.screenshotFrameRate,
+    welcomeShownHash: state.welcomeShownHash,
     recentlyClosed: state.recentlyClosed,
   }),
   () => {

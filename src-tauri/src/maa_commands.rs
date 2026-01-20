@@ -1787,13 +1787,15 @@ pub struct ChangesJson {
     pub modified: Vec<String>,
 }
 
-/// 将文件或目录移动到 old 文件夹，处理重名冲突
-fn move_to_old_folder(source: &std::path::Path, target_dir: &std::path::Path) -> Result<(), String> {
+/// 将文件或目录移动到程序目录下的 cache/old 文件夹，处理重名冲突
+fn move_to_old_folder(source: &std::path::Path) -> Result<(), String> {
     if !source.exists() {
         return Ok(());
     }
 
-    let old_dir = target_dir.join("old");
+    // 统一移动到 exe_dir/cache/old
+    let exe_dir = get_exe_dir()?;
+    let old_dir = std::path::Path::new(&exe_dir).join("cache").join("old");
     std::fs::create_dir_all(&old_dir)
         .map_err(|e| format!("无法创建 old 目录 [{}]: {}", old_dir.display(), e))?;
 
@@ -1805,14 +1807,14 @@ fn move_to_old_folder(source: &std::path::Path, target_dir: &std::path::Path) ->
     // 如果目标已存在，添加 .bak01, .bak02 等后缀
     if dest.exists() {
         let base_name = file_name.to_string_lossy();
-        for i in 1..=99 {
-            let new_name = format!("{}.bak{:02}", base_name, i);
+        for i in 1..=999 {
+            let new_name = format!("{}.bak{:03}", base_name, i);
             dest = old_dir.join(&new_name);
             if !dest.exists() {
                 break;
             }
         }
-        // 如果 99 个备份都存在，覆盖最后一个
+        // 如果 999 个备份都存在，覆盖最后的
     }
 
     // 执行移动（重命名）
@@ -1840,7 +1842,7 @@ pub fn apply_incremental_update(
     for file in &deleted_files {
         let file_path = target_path.join(file);
         if file_path.exists() {
-            move_to_old_folder(&file_path, target_path)?;
+            move_to_old_folder(&file_path)?;
         }
     }
 
@@ -1877,7 +1879,7 @@ pub fn apply_full_update(extract_dir: String, target_dir: String) -> Result<(), 
         }
 
         if target_item.exists() {
-            move_to_old_folder(&target_item, target_path)?;
+            move_to_old_folder(&target_item)?;
         }
     }
 
@@ -1885,6 +1887,20 @@ pub fn apply_full_update(extract_dir: String, target_dir: String) -> Result<(), 
     copy_dir_contents(&extract_dir, &target_dir, Some(&["changes.json"]))?;
 
     info!("apply_full_update success");
+    Ok(())
+}
+
+/// 复制单个文件，先将目标文件移动到 old 目录再复制
+fn copy_file_with_move_old(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    // 如果目标文件存在，先移动到 old 目录
+    if dst.exists() {
+        move_to_old_folder(dst)?;
+    }
+    
+    // 复制新文件
+    std::fs::copy(src, dst)
+        .map_err(|e| format!("无法复制文件 [{}] -> [{}]: {}", src.display(), dst.display(), e))?;
+    
     Ok(())
 }
 
@@ -1917,8 +1933,7 @@ fn copy_dir_contents(src: &str, dst: &str, skip_files: Option<&[&str]>) -> Resul
         if src_item.is_dir() {
             copy_dir_recursive(&src_item, &dst_item)?;
         } else {
-            std::fs::copy(&src_item, &dst_item)
-                .map_err(|e| format!("无法复制文件 [{}] -> [{}]: {}", src_item.display(), dst_item.display(), e))?;
+            copy_file_with_move_old(&src_item, &dst_item)?;
         }
     }
 
@@ -1940,8 +1955,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
         if src_item.is_dir() {
             copy_dir_recursive(&src_item, &dst_item)?;
         } else {
-            std::fs::copy(&src_item, &dst_item)
-                .map_err(|e| format!("无法复制文件 [{}] -> [{}]: {}", src_item.display(), dst_item.display(), e))?;
+            copy_file_with_move_old(&src_item, &dst_item)?;
         }
     }
 

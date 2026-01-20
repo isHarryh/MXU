@@ -1,11 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '@/stores/appStore';
 import { resolveContent, simpleMarkdownToHtml } from '@/services/contentResolver';
-
-// 用于存储已显示过的 welcome 内容的 hash
-const WELCOME_SHOWN_KEY = 'mxu-welcome-shown';
 
 /**
  * 计算字符串的简单 hash，用于判断内容是否变化
@@ -22,11 +19,13 @@ function simpleHash(str: string): string {
 
 export function WelcomeDialog() {
   const { t } = useTranslation();
-  const { projectInterface, interfaceTranslations, basePath, language } = useAppStore();
+  const { projectInterface, interfaceTranslations, basePath, language, welcomeShownHash, setWelcomeShownHash } = useAppStore();
   
   const [isOpen, setIsOpen] = useState(false);
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  // 保存当前内容的 hash，关闭时写入配置
+  const contentHashRef = useRef<string>('');
 
   const langKey = language === 'zh-CN' ? 'zh_cn' : 'en_us';
   const translations = interfaceTranslations[langKey];
@@ -53,10 +52,10 @@ export function WelcomeDialog() {
       
       // 计算内容 hash
       const contentHash = simpleHash(resolvedContent);
-      const shownHash = localStorage.getItem(WELCOME_SHOWN_KEY);
+      contentHashRef.current = contentHash;
       
       // 如果内容已经显示过（hash 相同），不再显示
-      if (shownHash === contentHash) {
+      if (welcomeShownHash === contentHash) {
         setIsOpen(false);
         return;
       }
@@ -67,13 +66,12 @@ export function WelcomeDialog() {
     };
 
     loadAndCheckWelcome();
-  }, [projectInterface?.welcome, langKey, basePath, translations]);
+  }, [projectInterface?.welcome, langKey, basePath, translations, welcomeShownHash]);
 
   const handleClose = () => {
-    // 记录已显示的内容 hash
-    if (content) {
-      const contentHash = simpleHash(content);
-      localStorage.setItem(WELCOME_SHOWN_KEY, contentHash);
+    // 记录已显示的内容 hash 到配置文件
+    if (contentHashRef.current) {
+      setWelcomeShownHash(contentHashRef.current);
     }
     setIsOpen(false);
   };

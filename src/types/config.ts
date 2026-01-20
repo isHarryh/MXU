@@ -89,6 +89,7 @@ export interface AppSettings {
   connectionPanelExpanded?: boolean; // 连接设置卡片是否展开
   screenshotPanelExpanded?: boolean; // 实时截图卡片是否展开
   screenshotFrameRate?: ScreenshotFrameRate; // 实时截图帧率
+  welcomeShownHash?: string;    // 已显示过的 welcome 内容 hash，用于判断内容变化时重新弹窗
 }
 
 // MXU 配置文件完整结构

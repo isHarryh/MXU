@@ -14,6 +14,39 @@ fn get_logs_dir() -> PathBuf {
     exe_dir.join("debug")
 }
 
+/// 递归清理目录内容，逐个删除文件和空目录，返回 (成功数, 失败数)
+fn cleanup_dir_contents(dir: &std::path::Path) -> (usize, usize) {
+    let mut deleted = 0;
+    let mut failed = 0;
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // 递归清理子目录
+                let (d, f) = cleanup_dir_contents(&path);
+                deleted += d;
+                failed += f;
+                // 尝试删除空目录
+                if std::fs::remove_dir(&path).is_ok() {
+                    deleted += 1;
+                }
+            } else {
+                // 删除文件
+                match std::fs::remove_file(&path) {
+                    Ok(()) => deleted += 1,
+                    Err(_) => failed += 1,
+                }
+            }
+        }
+    }
+
+    // 尝试删除根目录本身
+    let _ = std::fs::remove_dir(dir);
+
+    (deleted, failed)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 日志目录：exe 目录/debug/logs（与前端日志同目录）
@@ -50,6 +83,23 @@ pub fn run() {
             
             // 存储 AppHandle 供 MaaFramework 回调使用（发送事件到前端）
             maa_ffi::set_app_handle(app.handle().clone());
+
+            // 启动时异步清理 cache/old 目录（更新残留的旧文件），不阻塞应用启动
+            if let Ok(exe_dir) = maa_commands::get_exe_dir() {
+                let old_dir = std::path::Path::new(&exe_dir).join("cache").join("old");
+                if old_dir.exists() {
+                    std::thread::spawn(move || {
+                        let (deleted, failed) = cleanup_dir_contents(&old_dir);
+                        if deleted > 0 || failed > 0 {
+                            if failed == 0 {
+                                log::info!("Cleaned up cache/old: {} items deleted", deleted);
+                            } else {
+                                log::warn!("Cleaned up cache/old: {} deleted, {} failed", deleted, failed);
+                            }
+                        }
+                    });
+                }
+            }
 
             // 启动时自动加载 MaaFramework DLL
             if let Ok(maafw_dir) = maa_commands::get_maafw_dir() {

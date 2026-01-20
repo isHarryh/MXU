@@ -19,7 +19,7 @@ let isDownloading = false;
 let currentAbortController: AbortController | null = null;
 
 /**
- * 将文件移动到 old 文件夹，处理重名冲突
+ * 将文件移动到统一的 cache/old 文件夹，处理重名冲突
  * @param filePath 要移动的文件路径
  */
 async function moveToOldFolder(filePath: string): Promise<void> {
@@ -29,8 +29,9 @@ async function moveToOldFolder(filePath: string): Promise<void> {
       return;
     }
 
-    const dir = await dirname(filePath);
-    const oldDir = await join(dir, 'old');
+    // 统一移动到 exe_dir/cache/old
+    const exeDir = await invoke<string>('get_exe_dir');
+    const oldDir = await join(exeDir, 'cache', 'old');
     const fileName = await basename(filePath);
 
     // 确保 old 目录存在
@@ -38,10 +39,10 @@ async function moveToOldFolder(filePath: string): Promise<void> {
 
     let destPath = await join(oldDir, fileName);
 
-    // 如果目标已存在，添加 .bak01, .bak02 等后缀
+    // 如果目标已存在，添加 .bak001, .bak002 等后缀
     if (await exists(destPath)) {
-      for (let i = 1; i <= 99; i++) {
-        const bakSuffix = `.bak${i.toString().padStart(2, '0')}`;
+      for (let i = 1; i <= 999; i++) {
+        const bakSuffix = `.bak${i.toString().padStart(3, '0')}`;
         destPath = await join(oldDir, `${fileName}${bakSuffix}`);
         if (!await exists(destPath)) {
           break;
@@ -51,9 +52,9 @@ async function moveToOldFolder(filePath: string): Promise<void> {
 
     // 执行移动
     await rename(filePath, destPath);
-    log.info(`已移动到 old 文件夹: ${filePath} -> ${destPath}`);
+    log.info(`已移动到 cache/old: ${filePath} -> ${destPath}`);
   } catch (error) {
-    log.warn(`移动文件到 old 文件夹失败: ${filePath}`, error);
+    log.warn(`移动文件到 cache/old 失败: ${filePath}`, error);
     // 如果移动失败，尝试删除（兜底）
     await remove(filePath).catch(() => {});
   }
