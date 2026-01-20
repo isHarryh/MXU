@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useAppStore } from '@/stores/appStore';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useAppStore, type DownloadProgress } from '@/stores/appStore';
 import {
   TabBar,
   TaskList,
@@ -11,8 +11,10 @@ import {
   WelcomeDialog,
   ConnectionPanel,
   DashboardView,
+  InstallConfirmModal,
 } from '@/components';
-import { autoLoadInterface, loadConfig, loadConfigFromStorage, resolveI18nText, checkUpdate, maaService } from '@/services';
+import { autoLoadInterface, loadConfig, loadConfigFromStorage, resolveI18nText, checkAndPrepareDownload, maaService } from '@/services';
+import { downloadUpdate, getUpdateSavePath, consumeUpdateCompleteInfo, savePendingUpdateInfo, getPendingUpdateInfo, clearPendingUpdateInfo } from '@/services/updateService';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { loggers } from '@/utils/logger';
@@ -126,9 +128,69 @@ function App() {
     setWindowSize: setWindowSizeStore,
     setUpdateInfo,
     restoreBackendStates,
+    setDownloadStatus,
+    setDownloadProgress,
+    setDownloadSavePath,
+    setJustUpdatedInfo,
+    setShowInstallConfirmModal,
+    updateInfo,
+    downloadStatus,
+    setShowUpdateDialog,
   } = useAppStore();
 
   const initialized = useRef(false);
+  const downloadStartedRef = useRef(false);
+
+  // 自动下载函数
+  const startAutoDownload = useCallback(async (updateResult: NonNullable<Awaited<ReturnType<typeof checkAndPrepareDownload>>>, downloadBasePath: string) => {
+    if (!updateResult.downloadUrl || downloadStartedRef.current) return;
+    
+    downloadStartedRef.current = true;
+    setDownloadStatus('downloading');
+    setDownloadProgress({
+      downloadedSize: 0,
+      totalSize: updateResult.fileSize || 0,
+      speed: 0,
+      progress: 0,
+    });
+
+    try {
+      const savePath = await getUpdateSavePath(downloadBasePath, updateResult.filename);
+      setDownloadSavePath(savePath);
+
+      const success = await downloadUpdate({
+        url: updateResult.downloadUrl,
+        savePath,
+        totalSize: updateResult.fileSize,
+        onProgress: (progress: DownloadProgress) => {
+          setDownloadProgress(progress);
+        },
+      });
+
+      if (success) {
+        setDownloadStatus('completed');
+        log.info('更新下载完成');
+        
+        // 保存待安装更新信息，以便下次启动时自动安装
+        savePendingUpdateInfo({
+          versionName: updateResult.versionName,
+          releaseNote: updateResult.releaseNote,
+          channel: updateResult.channel,
+          downloadSavePath: savePath,
+          fileSize: updateResult.fileSize,
+          updateType: updateResult.updateType,
+          downloadSource: updateResult.downloadSource,
+          timestamp: Date.now(),
+        });
+      } else {
+        setDownloadStatus('failed');
+        log.warn('更新下载失败');
+      }
+    } catch (error) {
+      log.error('更新下载出错:', error);
+      setDownloadStatus('failed');
+    }
+  }, [setDownloadStatus, setDownloadProgress, setDownloadSavePath]);
 
   // 设置窗口标题
   useEffect(() => {
@@ -210,20 +272,68 @@ function App() {
         }
       }, 0);
       
-      // 自动检查更新
+      // 检查是否刚更新完成（重启后）
+      const updateCompleteInfo = consumeUpdateCompleteInfo();
+      if (updateCompleteInfo) {
+        log.info('检测到刚更新完成:', updateCompleteInfo.newVersion);
+        // 清除待安装更新信息（安装已完成）
+        clearPendingUpdateInfo();
+        setJustUpdatedInfo({
+          previousVersion: updateCompleteInfo.previousVersion,
+          newVersion: updateCompleteInfo.newVersion,
+          releaseNote: updateCompleteInfo.releaseNote,
+          channel: updateCompleteInfo.channel,
+        });
+        setShowInstallConfirmModal(true);
+        // 更新完成后跳过自动检查更新
+        return;
+      }
+      
+      // 检查是否有待安装的更新（上次下载完成但未安装）
+      const pendingUpdate = getPendingUpdateInfo();
+      if (pendingUpdate) {
+        log.info('检测到待安装更新:', pendingUpdate.versionName);
+        // 恢复更新状态
+        setUpdateInfo({
+          hasUpdate: true,
+          versionName: pendingUpdate.versionName,
+          releaseNote: pendingUpdate.releaseNote,
+          channel: pendingUpdate.channel,
+          fileSize: pendingUpdate.fileSize,
+          updateType: pendingUpdate.updateType,
+          downloadSource: pendingUpdate.downloadSource,
+        });
+        setDownloadSavePath(pendingUpdate.downloadSavePath);
+        setDownloadStatus('completed');
+        // 显示安装确认模态框并自动开始安装
+        setShowInstallConfirmModal(true);
+        useAppStore.getState().setInstallStatus('installing');
+        return;
+      }
+      
+      // 自动检查更新并下载
       if (result.interface.mirrorchyan_rid && result.interface.version) {
         const appState = useAppStore.getState();
-        checkUpdate({
+        const downloadBasePath = appState.basePath;
+        checkAndPrepareDownload({
           resourceId: result.interface.mirrorchyan_rid,
           currentVersion: result.interface.version,
           cdk: appState.mirrorChyanSettings.cdk || undefined,
           channel: appState.mirrorChyanSettings.channel,
           userAgent: 'MXU',
+          githubUrl: result.interface.github,
+          basePath: downloadBasePath,
         }).then(updateResult => {
           if (updateResult) {
             setUpdateInfo(updateResult);
             if (updateResult.hasUpdate) {
               log.info(`发现新版本: ${updateResult.versionName}`);
+              // 强制弹出更新气泡
+              useAppStore.getState().setShowUpdateDialog(true);
+              // 有更新且有下载链接时自动开始下载
+              if (updateResult.downloadUrl) {
+                startAutoDownload(updateResult, downloadBasePath);
+              }
             }
           }
         }).catch(err => {
@@ -253,6 +363,27 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  // 回到主界面时，根据状态弹出相应的弹窗
+  useEffect(() => {
+    if (currentPage === 'main') {
+      // 下载完成：弹出安装模态框
+      if (downloadStatus === 'completed') {
+        setShowInstallConfirmModal(true);
+      }
+      // 有更新或正在下载：弹出更新气泡
+      else if (updateInfo?.hasUpdate || downloadStatus === 'downloading') {
+        setShowUpdateDialog(true);
+      }
+    }
+  }, [currentPage, updateInfo?.hasUpdate, downloadStatus, setShowUpdateDialog, setShowInstallConfirmModal]);
+
+  // 下载完成时，强制弹出安装模态框
+  useEffect(() => {
+    if (downloadStatus === 'completed') {
+      setShowInstallConfirmModal(true);
+    }
+  }, [downloadStatus, setShowInstallConfirmModal]);
 
   // 监听窗口大小变化
   useEffect(() => {
@@ -379,7 +510,13 @@ function App() {
 
   // 设置页面
   if (currentPage === 'settings') {
-    return <SettingsPage />;
+    return (
+      <>
+        {/* 安装确认模态框 - 在设置页面也需要能弹出 */}
+        <InstallConfirmModal />
+        <SettingsPage />
+      </>
+    );
   }
 
   // 计算显示标题
@@ -455,6 +592,9 @@ function App() {
     <div className="h-full flex flex-col bg-bg-primary">
       {/* 欢迎弹窗 */}
       <WelcomeDialog />
+      
+      {/* 安装确认模态框 */}
+      <InstallConfirmModal />
 
       {/* 顶部标签栏 */}
       <TabBar />

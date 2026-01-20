@@ -176,6 +176,26 @@ interface AppState {
   setUpdateCheckLoading: (loading: boolean) => void;
   setShowUpdateDialog: (show: boolean) => void;
   
+  // 下载状态
+  downloadStatus: DownloadStatus;
+  downloadProgress: DownloadProgress | null;
+  downloadSavePath: string | null;
+  setDownloadStatus: (status: DownloadStatus) => void;
+  setDownloadProgress: (progress: DownloadProgress | null) => void;
+  setDownloadSavePath: (path: string | null) => void;
+  resetDownloadState: () => void;
+  
+  // 安装状态
+  showInstallConfirmModal: boolean;
+  installStatus: InstallStatus;
+  installError: string | null;
+  justUpdatedInfo: JustUpdatedInfo | null;
+  setShowInstallConfirmModal: (show: boolean) => void;
+  setInstallStatus: (status: InstallStatus) => void;
+  setInstallError: (error: string | null) => void;
+  setJustUpdatedInfo: (info: JustUpdatedInfo | null) => void;
+  resetInstallState: () => void;
+  
   // 最近关闭的实例
   recentlyClosed: RecentlyClosedInstance[];
   reopenRecentlyClosed: (id: string) => string | null;
@@ -247,6 +267,34 @@ export interface UpdateInfo {
   releaseNote: string;
   downloadUrl?: string;
   updateType?: 'incremental' | 'full';
+  channel?: string;
+  fileSize?: number;
+  filename?: string;
+  downloadSource?: 'mirrorchyan' | 'github';
+  // MirrorChyan API 错误信息
+  errorCode?: number;
+  errorMessage?: string;
+}
+
+// 下载进度类型
+export interface DownloadProgress {
+  downloadedSize: number;
+  totalSize: number;
+  speed: number;
+  progress: number; // 0-100
+}
+
+// 下载状态类型
+export type DownloadStatus = 'idle' | 'downloading' | 'completed' | 'failed';
+
+// 安装状态类型
+export type InstallStatus = 'idle' | 'installing' | 'completed' | 'failed';
+
+// 更新完成信息（重启后显示）
+export interface JustUpdatedInfo {
+  previousVersion: string;
+  newVersion: string;
+  releaseNote: string;
   channel?: string;
 }
 
@@ -1010,6 +1058,37 @@ export const useAppStore = create<AppState>()(
       setUpdateInfo: (info) => set({ updateInfo: info }),
       setUpdateCheckLoading: (loading) => set({ updateCheckLoading: loading }),
       setShowUpdateDialog: (show) => set({ showUpdateDialog: show }),
+      
+      // 下载状态
+      downloadStatus: 'idle',
+      downloadProgress: null,
+      downloadSavePath: null,
+      setDownloadStatus: (status) => set({ downloadStatus: status }),
+      setDownloadProgress: (progress) => set({ downloadProgress: progress }),
+      setDownloadSavePath: (path) => set({ downloadSavePath: path }),
+      resetDownloadState: () => set({
+        downloadStatus: 'idle',
+        downloadProgress: null,
+        downloadSavePath: null,
+      }),
+      
+      // 安装状态
+      showInstallConfirmModal: false,
+      installStatus: 'idle',
+      installError: null,
+      justUpdatedInfo: null,
+      setShowInstallConfirmModal: (show) => set({
+        showInstallConfirmModal: show,
+        // 打开模态框时自动关闭更新气泡
+        ...(show && { showUpdateDialog: false }),
+      }),
+      setInstallStatus: (status) => set({ installStatus: status }),
+      setInstallError: (error) => set({ installError: error }),
+      setJustUpdatedInfo: (info) => set({ justUpdatedInfo: info }),
+      resetInstallState: () => set({
+        installStatus: 'idle',
+        installError: null,
+      }),
       
       // 最近关闭的实例
       recentlyClosed: [],

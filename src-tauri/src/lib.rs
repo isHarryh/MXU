@@ -27,6 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -95,6 +96,12 @@ pub fn run() {
             maa_commands::maa_get_all_states,
             maa_commands::maa_get_cached_adb_devices,
             maa_commands::maa_get_cached_win32_windows,
+            // 更新安装命令
+            maa_commands::extract_zip,
+            maa_commands::check_changes_json,
+            maa_commands::apply_incremental_update,
+            maa_commands::apply_full_update,
+            maa_commands::cleanup_extract_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

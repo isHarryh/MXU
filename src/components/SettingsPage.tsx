@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   ArrowLeft, 
@@ -17,13 +17,18 @@ import {
   Eye,
   EyeOff,
   ListChecks,
+  AlertCircle,
+  AlertTriangle,
+  PackageCheck,
 } from 'lucide-react';
-import { checkUpdate, openMirrorChyanWebsite } from '@/services/updateService';
+import { checkAndPrepareDownload, openMirrorChyanWebsite, downloadUpdate, getUpdateSavePath, cancelDownload, MIRRORCHYAN_ERROR_CODES } from '@/services/updateService';
+import type { DownloadProgress } from '@/stores/appStore';
 import { defaultWindowSize } from '@/types/config';
 import { useAppStore } from '@/stores/appStore';
 import { setLanguage as setI18nLanguage } from '@/i18n';
 import { resolveContent, loadIconAsDataUrl, simpleMarkdownToHtml, resolveI18nText } from '@/services/contentResolver';
 import { maaService } from '@/services/maaService';
+import { ReleaseNotes, DownloadProgressBar } from './UpdateInfoCard';
 import clsx from 'clsx';
 
 // 检测是否在 Tauri 环境中
@@ -59,6 +64,15 @@ export function SettingsPage() {
     setShowUpdateDialog,
     showOptionPreview,
     setShowOptionPreview,
+    downloadStatus,
+    downloadProgress,
+    setDownloadStatus,
+    setDownloadProgress,
+    setDownloadSavePath,
+    resetDownloadState,
+    installStatus,
+    setInstallStatus,
+    setShowInstallConfirmModal,
   } = useAppStore();
 
   const [resolvedContent, setResolvedContent] = useState<ResolvedContent>({
@@ -72,6 +86,149 @@ export function SettingsPage() {
   const [mxuVersion, setMxuVersion] = useState<string | null>(null);
   const [maafwVersion, setMaafwVersion] = useState<string | null>(null);
   const [showCdk, setShowCdk] = useState(false);
+
+  // 调试：添加日志（提前定义以便在 handleCdkChange 中使用）
+  const addDebugLog = useCallback((msg: string) => {
+    setDebugLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+  }, []);
+
+  // 开始下载（支持指定 updateInfo，用于切换下载源后重新下载）
+  const startDownload = useCallback(async (targetUpdateInfo?: typeof updateInfo) => {
+    const info = targetUpdateInfo || updateInfo;
+    if (!info?.downloadUrl) return;
+
+    setDownloadStatus('downloading');
+    setDownloadProgress({
+      downloadedSize: 0,
+      totalSize: info.fileSize || 0,
+      speed: 0,
+      progress: 0,
+    });
+
+    try {
+      const savePath = await getUpdateSavePath(basePath, info.filename);
+      setDownloadSavePath(savePath);
+
+      const success = await downloadUpdate({
+        url: info.downloadUrl,
+        savePath,
+        totalSize: info.fileSize,
+        onProgress: (progress: DownloadProgress) => {
+          setDownloadProgress(progress);
+        },
+      });
+
+      if (success) {
+        setDownloadStatus('completed');
+      } else {
+        setDownloadStatus('failed');
+      }
+    } catch (error) {
+      console.error('下载失败:', error);
+      setDownloadStatus('failed');
+    }
+  }, [updateInfo, basePath, setDownloadStatus, setDownloadProgress, setDownloadSavePath]);
+
+  // 处理 CDK 变化：如果正在使用 GitHub 下载，切换到 Mirror酱
+  const handleCdkChange = useCallback(async (newCdk: string) => {
+    const previousCdk = mirrorChyanSettings.cdk;
+    setMirrorChyanCdk(newCdk);
+
+    // 检测：从空 CDK 变为有效 CDK，且正在使用 GitHub 下载
+    const isEnteringCdk = !previousCdk && newCdk.trim().length > 0;
+    const isDownloadingFromGitHub = downloadStatus === 'downloading' && updateInfo?.downloadSource === 'github';
+
+    if (isEnteringCdk && isDownloadingFromGitHub && projectInterface?.mirrorchyan_rid) {
+      addDebugLog('检测到填入 CDK，正在停止 GitHub 下载并切换到 Mirror酱...');
+
+      // 取消当前下载
+      cancelDownload();
+      resetDownloadState();
+
+      // 使用新 CDK 重新检查更新
+      setUpdateCheckLoading(true);
+      try {
+        const result = await checkAndPrepareDownload({
+          resourceId: projectInterface.mirrorchyan_rid,
+          currentVersion: projectInterface.version || '',
+          cdk: newCdk,
+          channel: mirrorChyanSettings.channel,
+          userAgent: 'MXU',
+          githubUrl: projectInterface.github,
+          basePath,
+        });
+
+        if (result) {
+          setUpdateInfo(result);
+          if (result.hasUpdate && result.downloadUrl && result.downloadSource === 'mirrorchyan') {
+            addDebugLog(`已切换到 Mirror酱 下载: ${result.versionName}`);
+            // 自动开始新的下载
+            await startDownload(result);
+          } else if (result.hasUpdate && result.downloadUrl) {
+            addDebugLog(`CDK 无效或不匹配，继续使用 ${result.downloadSource} 下载`);
+            await startDownload(result);
+          } else {
+            addDebugLog('无法获取 Mirror酱 下载链接，请检查 CDK');
+          }
+        }
+      } catch (err) {
+        addDebugLog(`切换下载源失败: ${err}`);
+      } finally {
+        setUpdateCheckLoading(false);
+      }
+    }
+  }, [
+    mirrorChyanSettings.cdk,
+    mirrorChyanSettings.channel,
+    setMirrorChyanCdk,
+    downloadStatus,
+    updateInfo,
+    projectInterface,
+    basePath,
+    resetDownloadState,
+    setUpdateCheckLoading,
+    setUpdateInfo,
+    startDownload,
+  ]);
+
+  // 打开模态框并自动开始安装
+  const handleInstallNow = useCallback(() => {
+    setShowInstallConfirmModal(true);
+    setInstallStatus('installing');
+  }, [setShowInstallConfirmModal, setInstallStatus]);
+
+  // 获取错误码对应的翻译文本
+  const errorText = useMemo(() => {
+    if (!updateInfo?.errorCode) return null;
+    const code = updateInfo.errorCode;
+
+    if (code < 0) {
+      return t('mirrorChyan.errors.negative');
+    }
+
+    const knownCodes = [1001, 7001, 7002, 7003, 7004, 7005, 8001, 8002, 8003, 8004, 1];
+    if (knownCodes.includes(code)) {
+      return t(`mirrorChyan.errors.${code}`);
+    }
+
+    return t('mirrorChyan.errors.unknown', {
+      code,
+      message: updateInfo.errorMessage || ''
+    });
+  }, [updateInfo?.errorCode, updateInfo?.errorMessage, t]);
+
+  // 判断是否为 CDK 相关错误
+  const isCdkError = useMemo(() => {
+    if (!updateInfo?.errorCode) return false;
+    const cdkErrorCodes: number[] = [
+      MIRRORCHYAN_ERROR_CODES.KEY_EXPIRED,
+      MIRRORCHYAN_ERROR_CODES.KEY_INVALID,
+      MIRRORCHYAN_ERROR_CODES.RESOURCE_QUOTA_EXHAUSTED,
+      MIRRORCHYAN_ERROR_CODES.KEY_MISMATCHED,
+      MIRRORCHYAN_ERROR_CODES.KEY_BLOCKED,
+    ];
+    return cdkErrorCodes.includes(updateInfo.errorCode);
+  }, [updateInfo?.errorCode]);
 
   const langKey = language === 'zh-CN' ? 'zh_cn' : 'en_us';
   const translations = interfaceTranslations[langKey];
@@ -134,11 +291,6 @@ export function SettingsPage() {
     setI18nLanguage(lang);
   };
 
-  // 调试：添加日志
-  const addDebugLog = (msg: string) => {
-    setDebugLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-  };
-
   // 调试：刷新 UI
   const handleRefreshUI = () => {
     addDebugLog('刷新 UI...');
@@ -161,18 +313,25 @@ export function SettingsPage() {
     addDebugLog(`开始检查更新... (频道: ${mirrorChyanSettings.channel})`);
     
     try {
-      const result = await checkUpdate({
+      const result = await checkAndPrepareDownload({
         resourceId: projectInterface.mirrorchyan_rid,
         currentVersion: projectInterface.version,
         cdk: mirrorChyanSettings.cdk || undefined,
         channel: mirrorChyanSettings.channel,
         userAgent: 'MXU',
+        githubUrl: projectInterface.github,
+        basePath,
       });
       
       if (result) {
         setUpdateInfo(result);
         if (result.hasUpdate) {
           addDebugLog(`发现新版本: ${result.versionName}`);
+          if (result.downloadUrl) {
+            addDebugLog(`下载来源: ${result.downloadSource === 'github' ? 'GitHub' : 'Mirror酱 CDN'}`);
+          } else {
+            addDebugLog('无可用下载链接');
+          }
           setShowUpdateDialog(true);
         } else {
           addDebugLog(`当前已是最新版本: ${result.versionName}`);
@@ -397,7 +556,7 @@ export function SettingsPage() {
                     <input
                       type={showCdk ? 'text' : 'password'}
                       value={mirrorChyanSettings.cdk}
-                      onChange={(e) => setMirrorChyanCdk(e.target.value)}
+                      onChange={(e) => handleCdkChange(e.target.value)}
                       placeholder={t('mirrorChyan.cdkPlaceholder')}
                       className="w-full px-3 py-2.5 pr-10 rounded-lg bg-bg-tertiary border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
                     />
@@ -408,39 +567,162 @@ export function SettingsPage() {
                       {showCdk ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <p className="mt-2 text-xs text-text-muted">
-                    {t('mirrorChyan.cdkHint')}
-                  </p>
+                  <div className="mt-3 text-xs text-text-muted leading-relaxed">
+                    <p>
+                      <button
+                        onClick={() => openMirrorChyanWebsite('mxu_settings_hint')}
+                        className="text-accent hover:underline"
+                      >
+                        Mirror酱
+                      </button>
+                      {t('mirrorChyan.cdkHintAfterLink', { projectName })}
+                    </p>
+                  </div>
                 </div>
 
                 {/* 检查更新按钮 */}
-                <div className="pt-4 border-t border-border">
-                  <button
-                    onClick={handleCheckUpdate}
-                    disabled={updateCheckLoading}
-                    className={clsx(
-                      'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                      updateCheckLoading
-                        ? 'bg-bg-tertiary text-text-muted cursor-not-allowed'
-                        : 'bg-accent text-white hover:bg-accent-hover'
-                    )}
-                  >
-                    {updateCheckLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        {t('mirrorChyan.checking')}
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4" />
-                        {t('mirrorChyan.checkUpdate')}
-                      </>
-                    )}
-                  </button>
-                  {updateInfo && !updateInfo.hasUpdate && (
-                    <p className="mt-2 text-xs text-center text-text-muted">
+                <div className="pt-4 border-t border-border space-y-4">
+                  {/* 正在下载时隐藏检查更新按钮 */}
+                  {downloadStatus === 'downloading' ? (
+                    <div className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-bg-tertiary text-text-muted">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {t('mirrorChyan.downloading')}
+                    </div>
+                  ) : downloadStatus === 'completed' && installStatus === 'idle' ? (
+                    /* 下载完成等待安装，显示立即安装按钮 */
+                    <button
+                      onClick={handleInstallNow}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-hover transition-colors"
+                    >
+                      <PackageCheck className="w-4 h-4" />
+                      {t('mirrorChyan.installNow')}
+                    </button>
+                  ) : (
+                    /* 默认检查更新按钮 */
+                    <button
+                      onClick={handleCheckUpdate}
+                      disabled={updateCheckLoading}
+                      className={clsx(
+                        'w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                        updateCheckLoading
+                          ? 'bg-bg-tertiary text-text-muted cursor-not-allowed'
+                          : 'bg-accent text-white hover:bg-accent-hover'
+                      )}
+                    >
+                      {updateCheckLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {t('mirrorChyan.checking')}
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          {t('mirrorChyan.checkUpdate')}
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* 更新状态显示 */}
+                  {updateInfo && !updateInfo.hasUpdate && !updateInfo.errorCode && (
+                    <p className="text-xs text-center text-text-muted">
                       {t('mirrorChyan.upToDate', { version: updateInfo.versionName })}
                     </p>
+                  )}
+
+                  {/* 有更新时显示更新内容和下载进度 */}
+                  {updateInfo?.hasUpdate && (
+                    <div className="space-y-4 p-4 bg-bg-tertiary rounded-lg border border-border">
+                      {/* 新版本标题 */}
+                      <div className="flex items-center gap-2">
+                        <Download className="w-4 h-4 text-accent" />
+                        <span className="text-sm font-medium text-text-primary">
+                          {t('mirrorChyan.newVersion')}
+                        </span>
+                        <span className="font-mono text-sm text-accent font-semibold">{updateInfo.versionName}</span>
+                        {updateInfo.channel && updateInfo.channel !== 'stable' && (
+                          <span className="px-1.5 py-0.5 bg-warning/20 text-warning text-xs rounded font-medium">
+                            {updateInfo.channel}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 更新日志 */}
+                      {updateInfo.releaseNote && (
+                        <ReleaseNotes
+                          releaseNote={updateInfo.releaseNote}
+                          collapsibleTitle
+                          maxHeightClass="max-h-32"
+                          bgClass="bg-bg-secondary"
+                          textSizeClass="text-xs"
+                        />
+                      )}
+
+                      {/* API 错误提示 */}
+                      {updateInfo.errorCode && errorText && (
+                        <div className={clsx(
+                          'flex items-start gap-2 p-2 rounded-lg text-xs',
+                          isCdkError
+                            ? 'bg-warning/10 text-warning'
+                            : 'bg-error/10 text-error'
+                        )}>
+                          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                          <span>{errorText}</span>
+                        </div>
+                      )}
+
+                      {/* 没有下载链接的提示 */}
+                      {!updateInfo.downloadUrl && !updateInfo.errorCode && (
+                        <div className="flex items-center gap-2 text-xs text-text-muted">
+                          <AlertCircle className="w-3.5 h-3.5 text-warning" />
+                          <span>{t('mirrorChyan.noDownloadUrl')}</span>
+                        </div>
+                      )}
+
+                      {/* 下载进度 */}
+                      {updateInfo.downloadUrl && downloadStatus !== 'idle' && (
+                        <DownloadProgressBar
+                          downloadStatus={downloadStatus}
+                          downloadProgress={downloadProgress}
+                          fileSize={updateInfo.fileSize}
+                          downloadSource={updateInfo.downloadSource}
+                          onInstallClick={handleInstallNow}
+                          onRetryClick={() => {
+                            resetDownloadState();
+                            startDownload();
+                          }}
+                          progressBgClass="bg-bg-secondary"
+                        />
+                      )}
+
+                      {/* 等待下载 */}
+                      {updateInfo.downloadUrl && downloadStatus === 'idle' && (
+                        <div className="flex items-center gap-2 text-xs text-text-muted">
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>{t('mirrorChyan.preparingDownload')}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 只有错误没有更新时显示错误 */}
+                  {updateInfo && !updateInfo.hasUpdate && updateInfo.errorCode && errorText && (
+                    <div className={clsx(
+                      'flex items-start gap-2 p-3 rounded-lg text-sm',
+                      isCdkError
+                        ? 'bg-warning/10 text-warning border border-warning/30'
+                        : 'bg-error/10 text-error border border-error/30'
+                    )}>
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <div className="space-y-1">
+                        <p>{errorText}</p>
+                        {isCdkError && (
+                          <p className="text-xs opacity-80">
+                            {t('mirrorChyan.cdkHint')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

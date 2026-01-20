@@ -1631,3 +1631,292 @@ pub fn maa_get_cached_win32_windows(state: State<Arc<MaaState>>) -> Result<Vec<W
     let cached = state.cached_win32_windows.lock().map_err(|e| e.to_string())?;
     Ok(cached.clone())
 }
+
+// ============================================================================
+// 更新安装相关命令
+// ============================================================================
+
+/// 解压压缩文件到指定目录，支持 zip 和 tar.gz/tgz 格式
+#[tauri::command]
+pub fn extract_zip(zip_path: String, dest_dir: String) -> Result<(), String> {
+    info!("extract_zip called: {} -> {}", zip_path, dest_dir);
+
+    let path_lower = zip_path.to_lowercase();
+    
+    // 根据文件扩展名判断格式
+    if path_lower.ends_with(".tar.gz") || path_lower.ends_with(".tgz") {
+        extract_tar_gz(&zip_path, &dest_dir)
+    } else {
+        extract_zip_file(&zip_path, &dest_dir)
+    }
+}
+
+/// 解压 ZIP 文件
+fn extract_zip_file(zip_path: &str, dest_dir: &str) -> Result<(), String> {
+    let file = std::fs::File::open(zip_path)
+        .map_err(|e| format!("无法打开 ZIP 文件 [{}]: {}", zip_path, e))?;
+
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| format!("无法解析 ZIP 文件: {}", e))?;
+
+    // 确保目标目录存在
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| format!("无法创建目录 [{}]: {}", dest_dir, e))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .map_err(|e| format!("无法读取 ZIP 条目 {}: {}", i, e))?;
+
+        let outpath = match file.enclosed_name() {
+            Some(path) => std::path::Path::new(dest_dir).join(path),
+            None => continue,
+        };
+
+        if file.name().ends_with('/') {
+            // 目录
+            std::fs::create_dir_all(&outpath)
+                .map_err(|e| format!("无法创建目录 [{}]: {}", outpath.display(), e))?;
+        } else {
+            // 文件
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    std::fs::create_dir_all(p)
+                        .map_err(|e| format!("无法创建父目录 [{}]: {}", p.display(), e))?;
+                }
+            }
+            let mut outfile = std::fs::File::create(&outpath)
+                .map_err(|e| format!("无法创建文件 [{}]: {}", outpath.display(), e))?;
+            std::io::copy(&mut file, &mut outfile)
+                .map_err(|e| format!("无法写入文件 [{}]: {}", outpath.display(), e))?;
+        }
+    }
+
+    info!("extract_zip success");
+    Ok(())
+}
+
+/// 解压 tar.gz/tgz 文件
+fn extract_tar_gz(tar_path: &str, dest_dir: &str) -> Result<(), String> {
+    use flate2::read::GzDecoder;
+    use tar::Archive;
+
+    let file = std::fs::File::open(tar_path)
+        .map_err(|e| format!("无法打开 tar.gz 文件 [{}]: {}", tar_path, e))?;
+
+    let gz = GzDecoder::new(file);
+    let mut archive = Archive::new(gz);
+
+    // 确保目标目录存在
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| format!("无法创建目录 [{}]: {}", dest_dir, e))?;
+
+    archive.unpack(dest_dir)
+        .map_err(|e| format!("解压 tar.gz 失败: {}", e))?;
+
+    info!("extract_tar_gz success");
+    Ok(())
+}
+
+/// 检查解压目录中是否存在 changes.json（增量包标识）
+#[tauri::command]
+pub fn check_changes_json(extract_dir: String) -> Result<Option<ChangesJson>, String> {
+    let changes_path = std::path::Path::new(&extract_dir).join("changes.json");
+    
+    if !changes_path.exists() {
+        return Ok(None);
+    }
+
+    let content = std::fs::read_to_string(&changes_path)
+        .map_err(|e| format!("无法读取 changes.json: {}", e))?;
+
+    let changes: ChangesJson = serde_json::from_str(&content)
+        .map_err(|e| format!("无法解析 changes.json: {}", e))?;
+
+    Ok(Some(changes))
+}
+
+/// changes.json 结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangesJson {
+    #[serde(default)]
+    pub added: Vec<String>,
+    #[serde(default)]
+    pub deleted: Vec<String>,
+    #[serde(default)]
+    pub modified: Vec<String>,
+}
+
+/// 将文件或目录移动到 old 文件夹，处理重名冲突
+fn move_to_old_folder(source: &std::path::Path, target_dir: &std::path::Path) -> Result<(), String> {
+    if !source.exists() {
+        return Ok(());
+    }
+
+    let old_dir = target_dir.join("old");
+    std::fs::create_dir_all(&old_dir)
+        .map_err(|e| format!("无法创建 old 目录 [{}]: {}", old_dir.display(), e))?;
+
+    let file_name = source.file_name()
+        .ok_or_else(|| format!("无法获取文件名: {}", source.display()))?;
+    
+    let mut dest = old_dir.join(file_name);
+    
+    // 如果目标已存在，添加 .bak01, .bak02 等后缀
+    if dest.exists() {
+        let base_name = file_name.to_string_lossy();
+        for i in 1..=99 {
+            let new_name = format!("{}.bak{:02}", base_name, i);
+            dest = old_dir.join(&new_name);
+            if !dest.exists() {
+                break;
+            }
+        }
+        // 如果 99 个备份都存在，覆盖最后一个
+    }
+
+    // 执行移动（重命名）
+    std::fs::rename(source, &dest)
+        .map_err(|e| format!("无法移动 [{}] -> [{}]: {}", source.display(), dest.display(), e))?;
+    
+    info!("Moved to old: {} -> {}", source.display(), dest.display());
+    Ok(())
+}
+
+/// 应用增量更新：将 deleted 中的文件移动到 old 文件夹，然后复制新文件
+#[tauri::command]
+pub fn apply_incremental_update(
+    extract_dir: String,
+    target_dir: String,
+    deleted_files: Vec<String>,
+) -> Result<(), String> {
+    info!("apply_incremental_update called");
+    info!("extract_dir: {}, target_dir: {}", extract_dir, target_dir);
+    info!("deleted_files: {:?}", deleted_files);
+
+    let target_path = std::path::Path::new(&target_dir);
+
+    // 1. 将 deleted 中列出的文件移动到 old 文件夹
+    for file in &deleted_files {
+        let file_path = target_path.join(file);
+        if file_path.exists() {
+            move_to_old_folder(&file_path, target_path)?;
+        }
+    }
+
+    // 2. 复制新包内容到目标目录（覆盖）
+    copy_dir_contents(&extract_dir, &target_dir, None)?;
+
+    info!("apply_incremental_update success");
+    Ok(())
+}
+
+/// 应用全量更新：将与新包根目录同名的文件夹/文件移动到 old 文件夹，然后复制新文件
+#[tauri::command]
+pub fn apply_full_update(extract_dir: String, target_dir: String) -> Result<(), String> {
+    info!("apply_full_update called");
+    info!("extract_dir: {}, target_dir: {}", extract_dir, target_dir);
+
+    let extract_path = std::path::Path::new(&extract_dir);
+    let target_path = std::path::Path::new(&target_dir);
+
+    // 1. 获取解压目录中的根级条目
+    let entries: Vec<_> = std::fs::read_dir(extract_path)
+        .map_err(|e| format!("无法读取解压目录: {}", e))?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    // 2. 将目标目录中与新包同名的文件/文件夹移动到 old 文件夹
+    for entry in &entries {
+        let name = entry.file_name();
+        let target_item = target_path.join(&name);
+
+        // 跳过 changes.json
+        if name == "changes.json" {
+            continue;
+        }
+
+        if target_item.exists() {
+            move_to_old_folder(&target_item, target_path)?;
+        }
+    }
+
+    // 3. 复制新包内容到目标目录
+    copy_dir_contents(&extract_dir, &target_dir, Some(&["changes.json"]))?;
+
+    info!("apply_full_update success");
+    Ok(())
+}
+
+/// 递归复制目录内容（不包含根目录本身）
+fn copy_dir_contents(src: &str, dst: &str, skip_files: Option<&[&str]>) -> Result<(), String> {
+    let src_path = std::path::Path::new(src);
+    let dst_path = std::path::Path::new(dst);
+
+    // 确保目标目录存在
+    std::fs::create_dir_all(dst_path)
+        .map_err(|e| format!("无法创建目录 [{}]: {}", dst, e))?;
+
+    for entry in std::fs::read_dir(src_path)
+        .map_err(|e| format!("无法读取目录 [{}]: {}", src, e))?
+    {
+        let entry = entry.map_err(|e| format!("无法读取目录条目: {}", e))?;
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
+
+        // 检查是否需要跳过
+        if let Some(skip) = skip_files {
+            if skip.iter().any(|s| *s == file_name_str) {
+                continue;
+            }
+        }
+
+        let src_item = entry.path();
+        let dst_item = dst_path.join(&file_name);
+
+        if src_item.is_dir() {
+            copy_dir_recursive(&src_item, &dst_item)?;
+        } else {
+            std::fs::copy(&src_item, &dst_item)
+                .map_err(|e| format!("无法复制文件 [{}] -> [{}]: {}", src_item.display(), dst_item.display(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// 递归复制整个目录
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst)
+        .map_err(|e| format!("无法创建目录 [{}]: {}", dst.display(), e))?;
+
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| format!("无法读取目录 [{}]: {}", src.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("无法读取目录条目: {}", e))?;
+        let src_item = entry.path();
+        let dst_item = dst.join(entry.file_name());
+
+        if src_item.is_dir() {
+            copy_dir_recursive(&src_item, &dst_item)?;
+        } else {
+            std::fs::copy(&src_item, &dst_item)
+                .map_err(|e| format!("无法复制文件 [{}] -> [{}]: {}", src_item.display(), dst_item.display(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// 清理临时解压目录
+#[tauri::command]
+pub fn cleanup_extract_dir(extract_dir: String) -> Result<(), String> {
+    info!("cleanup_extract_dir: {}", extract_dir);
+
+    let path = std::path::Path::new(&extract_dir);
+    if path.exists() {
+        std::fs::remove_dir_all(path)
+            .map_err(|e| format!("无法清理目录 [{}]: {}", extract_dir, e))?;
+    }
+
+    Ok(())
+}

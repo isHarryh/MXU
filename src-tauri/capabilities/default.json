@@ -36,7 +36,25 @@
       ]
     },
     {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        { "path": "**/*" }
+      ]
+    },
+    {
       "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "**/*" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-remove",
+      "allow": [
+        { "path": "**/*" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-rename",
       "allow": [
         { "path": "**/*" }
       ]
@@ -49,8 +67,13 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://mirrorchyan.com/**" }
+        { "url": "https://mirrorchyan.com/**" },
+        { "url": "https://mirrorchyan.net/**" },
+        { "url": "https://api.github.com/**" },
+        { "url": "https://github.com/**" },
+        { "url": "https://objects.githubusercontent.com/**" }
       ]
-    }
+    },
+    "process:allow-restart"
   ]
 }

@@ -16,7 +16,6 @@ export function TabBar() {
     draggedIndex: number;
     dragOverIndex: number | null;
   }>({ isDragging: false, draggedIndex: -1, dragOverIndex: null });
-  const [showUpdatePanel, setShowUpdatePanel] = useState(false);
   const [showRecentlyClosedPanel, setShowRecentlyClosedPanel] = useState(false);
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const bellButtonRef = useRef<HTMLButtonElement>(null);
@@ -41,7 +40,14 @@ export function TabBar() {
     toggleDashboardView,
     updateInfo,
     recentlyClosed,
+    downloadStatus,
+    showUpdateDialog,
+    setShowUpdateDialog,
   } = useAppStore();
+  
+  // 使用全局状态控制更新面板显示
+  const showUpdatePanel = showUpdateDialog;
+  const setShowUpdatePanel = setShowUpdateDialog;
   
   const { state: menuState, show: showMenu, hide: hideMenu } = useContextMenu();
 
@@ -355,8 +361,8 @@ export function TabBar() {
 
       {/* 工具按钮 */}
       <div className="flex items-center gap-1 px-2">
-        {/* 更新通知图标 */}
-        {updateInfo?.hasUpdate && (
+        {/* 更新通知图标 - 有更新或正在下载时显示 */}
+        {(updateInfo?.hasUpdate || downloadStatus === 'downloading') && (
           <button
             ref={bellButtonRef}
             onClick={() => setShowUpdatePanel(!showUpdatePanel)}
