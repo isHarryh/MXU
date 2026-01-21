@@ -1,3 +1,4 @@
+export { TitleBar } from './TitleBar';
 export { TabBar } from './TabBar';
 export { TaskList } from './TaskList';
 export { TaskItem } from './TaskItem';

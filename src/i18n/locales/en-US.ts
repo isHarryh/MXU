@@ -26,6 +26,14 @@ export default {
     dragToReorder: 'Drag to reorder',
   },
 
+  // Window controls
+  windowControls: {
+    minimize: 'Minimize',
+    maximize: 'Maximize',
+    restore: 'Restore',
+    close: 'Close',
+  },
+
   // Settings
   settings: {
     title: 'Settings',

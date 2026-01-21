@@ -26,6 +26,14 @@ export default {
     dragToReorder: '拖拽以重新排序',
   },
 
+  // 窗口控制按钮
+  windowControls: {
+    minimize: '最小化',
+    maximize: '最大化',
+    restore: '还原',
+    close: '关闭',
+  },
+
   // 设置
   settings: {
     title: '设置',
