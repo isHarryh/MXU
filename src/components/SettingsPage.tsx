@@ -22,6 +22,9 @@ import {
   FolderOpen,
   ScrollText,
   Trash2,
+  Paintbrush,
+  Info,
+  Monitor,
 } from 'lucide-react';
 import { checkAndPrepareDownload, openMirrorChyanWebsite, downloadUpdate, getUpdateSavePath, cancelDownload, MIRRORCHYAN_ERROR_CODES } from '@/services/updateService';
 import { clearAllCache, getCacheStats } from '@/services/cacheService';
@@ -463,7 +466,8 @@ export function SettingsPage() {
         <div className="max-w-2xl mx-auto p-6 space-y-8">
           {/* 外观设置 */}
           <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">
+            <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider flex items-center gap-2">
+              <Paintbrush className="w-4 h-4" />
               {t('settings.appearance')}
             </h2>
             
@@ -861,7 +865,8 @@ export function SettingsPage() {
 
           {/* 关于 */}
           <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">
+            <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider flex items-center gap-2">
+              <Info className="w-4 h-4" />
               {t('about.title')}
             </h2>
             
