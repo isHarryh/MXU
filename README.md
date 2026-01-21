@@ -1,6 +1,6 @@
 # MXU
 
-**MXU** 是一个基于 [MaaFramework ProjectInterface V2](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_cn/3.3-ProjectInterfaceV2%E5%8D%8F%E8%AE%AE.md) 协议的通用 GUI 客户端，使用 Tauri + React + TypeScript 构建。
+**MXU** 是一个基于 [MaaFramework PI V2](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_cn/3.3-ProjectInterfaceV2%E5%8D%8F%E8%AE%AE.md) 协议的通用 GUI 客户端，使用 Tauri + React + TypeScript 构建。
 
 它可以解析任何符合 PI V2 标准的 `interface.json` 文件，为 MaaFramework 生态中的自动化项目提供开箱即用的图形界面。
 
@@ -18,6 +18,38 @@
 - 🤖 **Agent 支持** - 支持 MaaAgentClient 实现自定义识别器和动作
 
 ## 🚀 快速开始
+
+### 依赖文件
+
+MXU 运行依赖：
+
+- [MaaFramework](https://github.com/MaaXYZ/MaaFramework/releases) 运行库，将压缩包中的 `bin` 文件夹内容解压到 `maafw` 文件夹中
+- [interface.json](https://github.com/MaaXYZ/MaaFramework/blob/main/sample/interface.json) 及相关资源文件，请参考 [PI 协议文档](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_cn/3.3-ProjectInterfaceV2%E5%8D%8F%E8%AE%AE.md) 编写
+
+目录结构如下
+
+```text
+your-project/
+├── mxu.exe (或 mxu / mxu.app)
+├── maafw/
+│   ├── MaaFramework.dll (Windows)
+│   ├── MaaToolkit.dll
+│   └── ... 其他依赖库
+├── interface.json
+└── resource/
+```
+
+> **注意**：不同平台的动态库文件后缀不同：
+>
+> - Windows: `.dll`
+> - macOS: `.dylib`
+> - Linux: `.so`
+
+### 配置文件
+
+用户配置保存在 `config` 文件夹中，调试日志保存在 `debug` 文件夹中。亦可在 设置 - 调试 中直接打开文件夹。
+
+## 📖 开发调试
 
 ### 安装依赖
 
@@ -65,44 +97,6 @@ pnpm tauri build
 ```
 
 构建产物位于 `src-tauri/target/release/` 目录。
-
-## 📖 使用方式
-
-### 下载 MaaFramework
-
-MXU 需要 MaaFramework 运行时库才能正常工作。请从 [MaaFramework Releases](https://github.com/MaaXYZ/MaaFramework/releases) 下载对应平台的版本，将压缩包中的 `bin` 文件夹内容解压到 MXU 可执行文件同级目录的 `maafw` 文件夹中：
-
-```text
-your-project/
-├── mxu.exe (或 mxu / mxu.app)
-├── maafw/
-│   ├── MaaFramework.dll (Windows)
-│   ├── MaaToolkit.dll
-│   └── ... 其他依赖库
-├── interface.json
-└── resource/
-```
-
-> **注意**：不同平台的动态库文件后缀不同：
->
-> - Windows: `.dll`
-> - macOS: `.dylib`
-> - Linux: `.so`
-
-### 作为独立 GUI 使用
-
-1. 将编译好的 MXU 可执行文件放入你的项目目录
-2. 下载并配置 MaaFramework 运行时库到 `maafw` 文件夹
-3. 确保同级目录下存在 `interface.json` 文件
-4. 运行 MXU
-
-### 配置文件
-
-用户配置保存在 `mxu.json` 中，包含：
-
-- 当前选择的控制器和资源
-- 各实例的任务列表和选项配置
-- 界面偏好设置
 
 ## 🔧 技术栈
 
