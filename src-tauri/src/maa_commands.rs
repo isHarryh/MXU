@@ -2187,3 +2187,109 @@ fn build_user_agent() -> String {
     let version = env!("CARGO_PKG_VERSION");
     format!("MXU/{} (Windows NT 10.0; Win64; x64; amd64) Tauri/2.0", version)
 }
+
+// ============================================================================
+// 权限检查相关命令
+// ============================================================================
+
+/// 检查当前进程是否以管理员权限运行
+#[tauri::command]
+pub fn is_elevated() -> bool {
+    #[cfg(windows)]
+    {
+        use std::ptr;
+        use windows::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows::Win32::Security::{
+            GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+        };
+        use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+        unsafe {
+            let mut token_handle: HANDLE = HANDLE::default();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle).is_err() {
+                return false;
+            }
+
+            let mut elevation = TOKEN_ELEVATION::default();
+            let mut return_length: u32 = 0;
+            let size = std::mem::size_of::<TOKEN_ELEVATION>() as u32;
+
+            let result = GetTokenInformation(
+                token_handle,
+                TokenElevation,
+                Some(ptr::addr_of_mut!(elevation) as *mut _),
+                size,
+                &mut return_length,
+            );
+
+            let _ = CloseHandle(token_handle);
+
+            if result.is_ok() {
+                elevation.TokenIsElevated != 0
+            } else {
+                false
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        // 非 Windows 平台：检查是否为 root
+        unsafe { libc::geteuid() == 0 }
+    }
+}
+
+/// 以管理员权限重启应用
+#[tauri::command]
+pub fn restart_as_admin(app_handle: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("获取程序路径失败: {}", e))?;
+
+        let exe_path_str = exe_path.to_string_lossy().to_string();
+
+        // 将字符串转换为 Windows 宽字符
+        fn to_wide(s: &str) -> Vec<u16> {
+            OsStr::new(s).encode_wide().chain(Some(0)).collect()
+        }
+
+        let operation = to_wide("runas");
+        let file = to_wide(&exe_path_str);
+
+        info!("restart_as_admin: restarting with admin privileges");
+
+        unsafe {
+            let result = ShellExecuteW(
+                HWND::default(),
+                PCWSTR::from_raw(operation.as_ptr()),
+                PCWSTR::from_raw(file.as_ptr()),
+                PCWSTR::null(),  // 无参数
+                PCWSTR::null(),  // 使用当前目录
+                SW_SHOWNORMAL,
+            );
+
+            // ShellExecuteW 返回值 > 32 表示成功
+            if result.0 as usize > 32 {
+                info!("restart_as_admin: new process started, exiting current");
+                // 退出当前进程
+                app_handle.exit(0);
+                Ok(())
+            } else {
+                Err(format!("以管理员身份启动失败: 错误码 {}", result.0 as usize))
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        Err("此功能仅在 Windows 上可用".to_string())
+    }
+}

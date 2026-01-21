@@ -403,6 +403,15 @@ export default {
     resourceNotFound: 'Resource not found',
   },
 
+  // Permission prompt
+  permission: {
+    title: 'Administrator Required',
+    message: 'The current controller requires administrator privileges to run properly. Click the button below to restart the application as administrator.',
+    hint: 'After restarting, you may need to reselect the device and reload resources.',
+    restart: 'Restart as Admin',
+    restarting: 'Restarting...',
+  },
+
   // Context Menu
   contextMenu: {
     // Tab context menu

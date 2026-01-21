@@ -155,6 +155,9 @@ pub fn run() {
             // 下载命令
             maa_commands::download_file,
             maa_commands::cancel_download,
+            // 权限检查命令
+            maa_commands::is_elevated,
+            maa_commands::restart_as_admin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

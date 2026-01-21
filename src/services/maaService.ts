@@ -550,6 +550,29 @@ export const maaService = {
       return [];
     }
   },
+
+  /**
+   * 检查当前进程是否以管理员权限运行
+   */
+  async isElevated(): Promise<boolean> {
+    if (!isTauri()) return false;
+    try {
+      return await invoke<boolean>('is_elevated');
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * 以管理员权限重启应用
+   * @returns 如果成功启动新进程会退出当前进程，否则返回错误信息
+   */
+  async restartAsAdmin(): Promise<void> {
+    if (!isTauri()) {
+      throw new Error('此功能仅在 Tauri 环境中可用');
+    }
+    await invoke('restart_as_admin');
+  },
 };
 
 export default maaService;

@@ -10,6 +10,7 @@ import {
   StopCircle,
   Loader2,
   Clock,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { maaService } from '@/services/maaService';
@@ -81,6 +82,10 @@ export function Toolbar({ showAddPanel, onToggleAddPanel }: ToolbarProps) {
   // 自动连接状态
   const [autoConnectPhase, setAutoConnectPhase] = useState<AutoConnectPhase>('idle');
   const [autoConnectError, setAutoConnectError] = useState<string | null>(null);
+  
+  // 权限提示弹窗状态
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [isRestartingAsAdmin, setIsRestartingAsAdmin] = useState(false);
   
   // 自动连接回调 ID
   const pendingCtrlIdRef = useRef<number | null>(null);
@@ -811,6 +816,41 @@ export function Toolbar({ showAddPanel, onToggleAddPanel }: ToolbarProps) {
     };
   }, [checkAndExecuteScheduledTasks]);
 
+  /**
+   * 检查当前控制器是否需要管理员权限
+   * @returns 如果需要权限且当前不是管理员返回 true
+   */
+  const checkPermissionRequired = async (): Promise<boolean> => {
+    // 检查当前控制器是否设置了 permission_required
+    if (!currentController?.permission_required) {
+      return false;
+    }
+    
+    // 检查当前进程是否已经是管理员
+    const isElevated = await maaService.isElevated();
+    if (isElevated) {
+      log.info('当前已是管理员权限');
+      return false;
+    }
+    
+    log.info('控制器需要管理员权限，但当前不是管理员');
+    return true;
+  };
+
+  /**
+   * 处理以管理员身份重启
+   */
+  const handleRestartAsAdmin = async () => {
+    setIsRestartingAsAdmin(true);
+    try {
+      await maaService.restartAsAdmin();
+      // 成功的话进程会退出，不会执行到这里
+    } catch (err) {
+      log.error('以管理员身份重启失败:', err);
+      setIsRestartingAsAdmin(false);
+    }
+  };
+
   const handleStartStop = async () => {
     if (!instance) return;
 
@@ -841,6 +881,13 @@ export function Toolbar({ showAddPanel, onToggleAddPanel }: ToolbarProps) {
       // 启动任务
       if (!canRun) {
         log.warn('无法运行任务：未连接或资源未加载，且没有保存的设备配置');
+        return;
+      }
+
+      // 检查是否需要管理员权限
+      const needsElevation = await checkPermissionRequired();
+      if (needsElevation) {
+        setShowPermissionModal(true);
         return;
       }
 
@@ -1128,6 +1175,64 @@ export function Toolbar({ showAddPanel, onToggleAddPanel }: ToolbarProps) {
             instanceId={instance.id}
             onClose={() => setShowSchedulePanel(false)}
           />
+        )}
+
+        {/* 权限提示弹窗 */}
+        {showPermissionModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-bg-primary rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+              {/* 标题栏 */}
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-bg-secondary">
+                <ShieldAlert className="w-5 h-5 text-warning" />
+                <h3 className="font-medium text-text-primary">
+                  {t('permission.title')}
+                </h3>
+              </div>
+              
+              {/* 内容 */}
+              <div className="px-5 py-4">
+                <p className="text-text-secondary text-sm leading-relaxed">
+                  {t('permission.message')}
+                </p>
+                <p className="text-text-muted text-xs mt-3">
+                  {t('permission.hint')}
+                </p>
+              </div>
+              
+              {/* 按钮 */}
+              <div className="flex justify-end gap-2 px-5 py-4 border-t border-border bg-bg-secondary">
+                <button
+                  onClick={() => setShowPermissionModal(false)}
+                  disabled={isRestartingAsAdmin}
+                  className="px-4 py-2 rounded-lg text-sm text-text-secondary hover:bg-bg-hover transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={handleRestartAsAdmin}
+                  disabled={isRestartingAsAdmin}
+                  className={clsx(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                    isRestartingAsAdmin
+                      ? 'bg-accent/70 text-white cursor-wait'
+                      : 'bg-accent hover:bg-accent-hover text-white'
+                  )}
+                >
+                  {isRestartingAsAdmin ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{t('permission.restarting')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldAlert className="w-4 h-4" />
+                      <span>{t('permission.restart')}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* 开始/停止按钮 */}
