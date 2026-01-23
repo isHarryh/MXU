@@ -103,6 +103,7 @@ export interface MxuConfig {
   instances: SavedInstance[];
   settings: AppSettings;
   recentlyClosed?: RecentlyClosedInstance[]; // 最近关闭的实例列表（最多30条）
+  interfaceTaskSnapshot?: string[]; // 保存时 interface.json 中的任务名列表快照，用于检测新增任务
 }
 
 // 默认窗口大小

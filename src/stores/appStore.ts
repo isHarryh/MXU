@@ -910,25 +910,56 @@ export const useAppStore = create<AppState>()(
 
     // 配置导入
     importConfig: (config) => {
-      const instances: Instance[] = config.instances.map((inst) => ({
-        id: inst.id,
-        name: inst.name,
-        controllerId: inst.controllerId,
-        resourceId: inst.resourceId,
-        controllerName: inst.controllerName,
-        resourceName: inst.resourceName,
-        savedDevice: inst.savedDevice,
-        selectedTasks: inst.tasks.map((t) => ({
+      const pi = get().projectInterface;
+
+      // 获取保存时的任务快照，用于判断哪些是真正新增的任务
+      const snapshotTaskNames = new Set(config.interfaceTaskSnapshot || []);
+
+      const instances: Instance[] = config.instances.map((inst) => {
+        // 恢复已保存的任务
+        const savedTasks: SelectedTask[] = inst.tasks.map((t) => ({
           id: t.id,
           taskName: t.taskName,
           customName: t.customName,
           enabled: t.enabled,
           optionValues: t.optionValues,
           expanded: false,
-        })),
-        isRunning: false,
-        schedulePolicies: inst.schedulePolicies,
-      }));
+        }));
+
+        // 检查 interface.json 中是否有新增任务（相比快照），追加到列表末尾
+        // 只有在快照中不存在的任务才是真正新增的（用户删除的任务不会被重新添加）
+        if (pi) {
+          const userTaskNames = new Set(savedTasks.map((t) => t.taskName));
+          pi.task.forEach((task) => {
+            // 任务在快照中不存在（真正新增）且用户列表中也没有
+            if (!snapshotTaskNames.has(task.name) && !userTaskNames.has(task.name)) {
+              // 递归初始化所有选项（包括嵌套选项）
+              const optionValues =
+                task.option && pi.option ? initializeAllOptionValues(task.option, pi.option) : {};
+              savedTasks.push({
+                id: generateId(),
+                taskName: task.name,
+                enabled: false, // 新增任务默认不勾选
+                optionValues,
+                expanded: false,
+              });
+            }
+          });
+        }
+
+        return {
+          id: inst.id,
+          name: inst.name,
+          controllerId: inst.controllerId,
+          resourceId: inst.resourceId,
+          controllerName: inst.controllerName,
+          resourceName: inst.resourceName,
+          savedDevice: inst.savedDevice,
+          selectedTasks: savedTasks,
+          isRunning: false,
+          schedulePolicies: inst.schedulePolicies,
+        };
+      });
 
       // 恢复选中的控制器和资源状态
       const selectedController: Record<string, string> = {};
@@ -1511,6 +1542,8 @@ function generateConfig(): MxuConfig {
       devMode: state.devMode,
     },
     recentlyClosed: state.recentlyClosed,
+    // 保存当前 interface.json 的任务名列表快照，用于下次加载时检测新增任务
+    interfaceTaskSnapshot: state.projectInterface?.task.map((t) => t.name) || [],
   };
 }
 
