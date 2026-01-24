@@ -13,6 +13,7 @@ import {
   ConnectionPanel,
   DashboardView,
   InstallConfirmModal,
+  VCRedistModal,
 } from '@/components';
 import {
   autoLoadInterface,
@@ -33,6 +34,7 @@ import {
 } from '@/services/updateService';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { loggers } from '@/utils/logger';
 import { useMaaCallbackLogger, useMaaAgentLogger } from '@/utils/useMaaCallbackLogger';
 import { getInterfaceLangKey } from '@/i18n';
@@ -131,6 +133,7 @@ function App() {
   const [versionWarning, setVersionWarning] = useState<{ current: string; minimum: string } | null>(
     null,
   );
+  const [showVCRedistModal, setShowVCRedistModal] = useState(false);
 
   // 页面过渡状态
   const [isSettingsExiting, setIsSettingsExiting] = useState(false);
@@ -434,6 +437,9 @@ function App() {
       log.info('加载完成, 项目:', result.interface.name);
       setLoadingState('success');
 
+      // 检查是否缺少 VC++ 运行库
+      checkVCRedistMissing();
+
       // 如果没有实例，创建一个默认实例
       setTimeout(() => {
         const currentInstances = useAppStore.getState().instances;
@@ -537,6 +543,21 @@ function App() {
 
     // 自动加载 interface
     loadInterface();
+  }, []);
+
+  // 检查 VC++ 运行库缺失（在加载完成后检查）
+  const checkVCRedistMissing = useCallback(async () => {
+    if (!isTauri()) return;
+
+    try {
+      const missing = await invoke<boolean>('check_vcredist_missing');
+      if (missing) {
+        log.warn('检测到 VC++ 运行库缺失');
+        setShowVCRedistModal(true);
+      }
+    } catch (err) {
+      log.warn('检查 VC++ 运行库缺失失败:', err);
+    }
   }, []);
 
   // 主题变化时更新 DOM
@@ -791,6 +812,9 @@ function App() {
 
       {/* 安装确认模态框 */}
       <InstallConfirmModal />
+
+      {/* VC++ 运行库缺失提示模态框 */}
+      <VCRedistModal show={showVCRedistModal} onClose={() => setShowVCRedistModal(false)} />
 
       {/* MaaFramework 版本警告弹窗 */}
       {versionWarning && (

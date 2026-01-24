@@ -614,9 +614,84 @@ impl MaaLibrary {
 /// 全局 MaaLibrary 实例
 pub static MAA_LIBRARY: Lazy<Mutex<Option<MaaLibrary>>> = Lazy::new(|| Mutex::new(None));
 
+/// 标记是否检测到可能缺少 VC++ 运行库（DLL 存在但加载失败）
+static VCREDIST_MISSING_DETECTED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+
+/// 设置 VC++ 运行库缺失标记
+pub fn set_vcredist_missing(missing: bool) {
+    if let Ok(mut guard) = VCREDIST_MISSING_DETECTED.lock() {
+        *guard = missing;
+    }
+}
+
+/// 检查并消费 VC++ 运行库缺失标记（检查后自动重置为 false）
+pub fn check_and_clear_vcredist_missing() -> bool {
+    if let Ok(mut guard) = VCREDIST_MISSING_DETECTED.lock() {
+        let was_missing = *guard;
+        *guard = false;
+        return was_missing;
+    }
+    false
+}
+
+/// 库加载错误类型
+#[derive(Debug, Clone, Serialize)]
+pub enum MaaLibraryError {
+    /// DLL 文件不存在
+    FileNotFound(String),
+    /// DLL 存在但加载失败（可能是运行库缺失）
+    LoadFailed {
+        path: String,
+        error: String,
+        dlls_exist: bool,
+    },
+    /// 其他错误
+    Other(String),
+}
+
+impl std::fmt::Display for MaaLibraryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MaaLibraryError::FileNotFound(path) => write!(f, "DLL file not found: {}", path),
+            MaaLibraryError::LoadFailed { path, error, .. } => {
+                write!(f, "Failed to load DLL: {} ({})", path, error)
+            }
+            MaaLibraryError::Other(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+/// 检查 maafw 目录下的关键 DLL 是否存在
+pub fn check_dlls_exist(lib_dir: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        let framework_path = lib_dir.join("MaaFramework.dll");
+        let toolkit_path = lib_dir.join("MaaToolkit.dll");
+        framework_path.exists() && toolkit_path.exists()
+    }
+    #[cfg(not(windows))]
+    {
+        // 非 Windows 平台不需要 VC++ 运行库
+        false
+    }
+}
+
 /// 初始化 MaaFramework 库
-pub fn init_maa_library(lib_dir: &Path) -> Result<(), String> {
-    let lib = MaaLibrary::load(lib_dir)?;
+pub fn init_maa_library(lib_dir: &Path) -> Result<(), MaaLibraryError> {
+    let lib = MaaLibrary::load(lib_dir).map_err(|e| {
+        // 检查 DLL 文件是否存在
+        let dlls_exist = check_dlls_exist(lib_dir);
+        if dlls_exist {
+            // DLL 存在但加载失败，可能是运行库缺失
+            MaaLibraryError::LoadFailed {
+                path: lib_dir.to_string_lossy().into_owned(),
+                error: e,
+                dlls_exist: true,
+            }
+        } else {
+            MaaLibraryError::FileNotFound(lib_dir.to_string_lossy().into_owned())
+        }
+    })?;
 
     // 初始化 Toolkit 配置，user_path 指向 exe 目录，避免 MaaFramework 日志落在 maafw 目录
     let exe_dir = std::env::current_exe()
@@ -631,7 +706,7 @@ pub fn init_maa_library(lib_dir: &Path) -> Result<(), String> {
         unsafe { (lib.maa_toolkit_config_init_option)(user_path.as_ptr(), default_json.as_ptr()) };
     debug!("MaaToolkitConfigInitOption result: {}", result);
 
-    let mut guard = MAA_LIBRARY.lock().map_err(|e| e.to_string())?;
+    let mut guard = MAA_LIBRARY.lock().map_err(|e| MaaLibraryError::Other(e.to_string()))?;
     *guard = Some(lib);
     Ok(())
 }

@@ -312,7 +312,7 @@ pub fn maa_init(state: State<Arc<MaaState>>, lib_dir: Option<String>) -> Result<
     *state.lib_dir.lock().map_err(|e| e.to_string())? = Some(lib_path.clone());
 
     info!("maa_init loading library...");
-    init_maa_library(&lib_path)?;
+    init_maa_library(&lib_path).map_err(|e| e.to_string())?;
 
     let version = get_maa_version().unwrap_or_default();
     info!("maa_init success, version: {}", version);
@@ -2720,4 +2720,98 @@ pub fn maa_set_save_draw(enabled: bool) -> Result<bool, String> {
     } else {
         Err("设置保存调试图像失败".to_string())
     }
+}
+
+/// 打开文件（使用系统默认程序）
+#[tauri::command]
+pub async fn open_file(file_path: String) -> Result<(), String> {
+    info!("open_file: {}", file_path);
+
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        // 在 Windows 上使用 cmd /c start 来打开文件
+        Command::new("cmd")
+            .args(["/c", "start", "", &file_path])
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        Command::new("open")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        Command::new("xdg-open")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// 运行程序并等待其退出
+#[tauri::command]
+pub async fn run_and_wait(file_path: String) -> Result<i32, String> {
+    info!("run_and_wait: {}", file_path);
+
+    use std::process::Command;
+
+    #[cfg(windows)]
+    {
+        let status = Command::new(&file_path)
+            .status()
+            .map_err(|e| format!("Failed to run file: {}", e))?;
+
+        let exit_code = status.code().unwrap_or(-1);
+        info!("run_and_wait finished with exit code: {}", exit_code);
+        Ok(exit_code)
+    }
+
+    #[cfg(not(windows))]
+    {
+        Err("run_and_wait is only supported on Windows".to_string())
+    }
+}
+
+/// 重新尝试加载 MaaFramework 库
+#[tauri::command]
+pub async fn retry_load_maa_library() -> Result<String, String> {
+    info!("retry_load_maa_library");
+
+    let maafw_dir = get_maafw_dir()?;
+    if !maafw_dir.exists() {
+        return Err("MaaFramework directory not found".to_string());
+    }
+
+    crate::maa_ffi::init_maa_library(&maafw_dir).map_err(|e| e.to_string())?;
+
+    let version = crate::maa_ffi::get_maa_version().unwrap_or_default();
+    info!("MaaFramework loaded successfully, version: {}", version);
+
+    Ok(version)
+}
+
+/// 检查是否检测到 VC++ 运行库缺失（检查后自动清除标记）
+#[tauri::command]
+pub fn check_vcredist_missing() -> bool {
+    let missing = crate::maa_ffi::check_and_clear_vcredist_missing();
+    if missing {
+        info!("VC++ runtime missing detected, notifying frontend");
+    }
+    missing
+}
+
+/// 获取系统架构
+#[tauri::command]
+pub fn get_arch() -> String {
+    std::env::consts::ARCH.to_string()
 }

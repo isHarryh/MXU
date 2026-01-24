@@ -503,4 +503,18 @@ export default {
     restart: '以管理员身份重启',
     restarting: '正在重启...',
   },
+
+  // VC++ 运行库
+  vcredist: {
+    title: '缺少运行库',
+    description: 'MaaFramework 需要 Microsoft Visual C++ 运行库才能正常工作。',
+    downloading: '正在下载运行库...',
+    downloadFailed: '下载失败',
+    waitingInstall: '正在等待安装完成，请在弹出的安装程序中完成安装...',
+    retrying: '正在重新加载...',
+    success: '运行库安装成功！',
+    stillFailed: '安装完成，但加载仍然失败。请重启电脑后再试。',
+    restartHint: '如果问题仍然存在，请重启电脑后再试。',
+    retry: '重试',
+  },
 };

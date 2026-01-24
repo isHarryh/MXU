@@ -2,6 +2,7 @@ mod maa_commands;
 mod maa_ffi;
 
 use maa_commands::MaaState;
+use maa_ffi::MaaLibraryError;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
@@ -86,7 +87,18 @@ pub fn run() {
                 if maafw_dir.exists() {
                     match maa_ffi::init_maa_library(&maafw_dir) {
                         Ok(()) => log::info!("MaaFramework loaded from {:?}", maafw_dir),
-                        Err(e) => log::error!("Failed to load MaaFramework: {}", e),
+                        Err(e) => {
+                            log::error!("Failed to load MaaFramework: {}", e);
+                            // 检查是否是 DLL 存在但加载失败的情况（可能是运行库缺失）
+                            if let MaaLibraryError::LoadFailed { dlls_exist: true, error, .. } = &e {
+                                log::warn!(
+                                    "DLLs exist but failed to load, possibly missing VC++ runtime: {}",
+                                    error
+                                );
+                                // 设置标记，前端加载完成后会查询此标记
+                                maa_ffi::set_vcredist_missing(true);
+                            }
+                        }
                     }
                 } else {
                     log::warn!("MaaFramework directory not found: {:?}", maafw_dir);
@@ -143,6 +155,12 @@ pub fn run() {
             maa_commands::restart_as_admin,
             // 全局选项命令
             maa_commands::maa_set_save_draw,
+            // 文件操作命令
+            maa_commands::open_file,
+            maa_commands::run_and_wait,
+            maa_commands::retry_load_maa_library,
+            maa_commands::check_vcredist_missing,
+            maa_commands::get_arch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

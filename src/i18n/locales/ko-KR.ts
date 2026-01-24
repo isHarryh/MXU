@@ -501,4 +501,18 @@ export default {
     restart: '관리자 권한으로 재시작',
     restarting: '재시작 중...',
   },
+
+  // VC++ 런타임
+  vcredist: {
+    title: '런타임 누락',
+    description: 'MaaFramework가 제대로 작동하려면 Microsoft Visual C++ 런타임이 필요합니다.',
+    downloading: '런타임 다운로드 중...',
+    downloadFailed: '다운로드 실패',
+    waitingInstall: '설치 완료를 기다리고 있습니다. 설치 프로그램에서 설치를 완료하세요...',
+    retrying: '다시 로드 중...',
+    success: '런타임 설치 완료!',
+    stillFailed: '설치가 완료되었지만 로드에 실패했습니다. 컴퓨터를 다시 시작한 후 다시 시도하세요.',
+    restartHint: '문제가 지속되면 컴퓨터를 다시 시작한 후 다시 시도하세요.',
+    retry: '다시 시도',
+  },
 };

@@ -508,4 +508,18 @@ export default {
     restart: '管理者として再起動',
     restarting: '再起動中...',
   },
+
+  // VC++ ランタイム
+  vcredist: {
+    title: 'ランタイムが見つかりません',
+    description: 'MaaFramework を正しく動作させるには、Microsoft Visual C++ ランタイムが必要です。',
+    downloading: 'ランタイムをダウンロード中...',
+    downloadFailed: 'ダウンロード失敗',
+    waitingInstall: 'インストールの完了を待っています。インストーラーでインストールを完了してください...',
+    retrying: '再読み込み中...',
+    success: 'ランタイムのインストールに成功しました！',
+    stillFailed: 'インストールは完了しましたが、読み込みに失敗しました。コンピュータを再起動してから再試行してください。',
+    restartHint: '問題が解決しない場合は、コンピュータを再起動してから再試行してください。',
+    retry: '再試行',
+  },
 };

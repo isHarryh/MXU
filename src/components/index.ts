@@ -17,6 +17,7 @@ export { SchedulePanel } from './SchedulePanel';
 export { ContextMenu, useContextMenu, getIcon } from './ContextMenu';
 export type { MenuItem, ContextMenuState } from './ContextMenu';
 export { InstallConfirmModal } from './InstallConfirmModal';
+export { VCRedistModal } from './VCRedistModal';
 export {
   VersionInfo,
   ReleaseNotes,
