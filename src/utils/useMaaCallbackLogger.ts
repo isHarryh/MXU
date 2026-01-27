@@ -18,12 +18,14 @@ import {
 
 const log = loggers.app;
 
-// Focus 消息的占位符替换
+// Focus 消息的占位符替换（不包含 {image}，由专门函数处理）
 function replaceFocusPlaceholders(
   template: string,
   details: MaaCallbackDetails & Record<string, unknown>,
 ): string {
   return template.replace(/\{(\w+)\}/g, (match, key) => {
+    // {image} 由专门的函数处理，这里跳过
+    if (key === 'image') return match;
     const value = details[key];
     if (value !== undefined && value !== null) {
       return String(value);
@@ -34,29 +36,49 @@ function replaceFocusPlaceholders(
 
 /**
  * 解析 focus 消息内容
- * 支持国际化（$开头）、URL、文件路径、Markdown 格式
+ * 支持国际化（$开头）、URL、文件路径、Markdown 格式、{image} 截图占位符
+ * @param template 模板字符串
+ * @param details 回调详情（用于占位符替换）
+ * @param instanceId 实例 ID（用于获取截图）
  */
 async function resolveFocusContent(
   template: string,
   details: MaaCallbackDetails & Record<string, unknown>,
+  instanceId: string,
 ): Promise<{ message: string; html?: string }> {
   const state = useAppStore.getState();
   const langKey = getInterfaceLangKey(state.language);
   const translations = state.interfaceTranslations[langKey];
   const basePath = state.basePath;
 
-  // 1. 替换占位符
-  const withPlaceholders = replaceFocusPlaceholders(template, details);
+  // 1. 替换普通占位符（不包含 {image}）
+  let withPlaceholders = replaceFocusPlaceholders(template, details);
 
-  // 2. 处理国际化
+  // 2. 处理 {image} 占位符 - 获取控制器缓存的截图
+  if (withPlaceholders.includes('{image}')) {
+    try {
+      const imageDataUrl = await maaService.getCachedImage(instanceId);
+      if (imageDataUrl) {
+        // 直接替换为 data URL，用户可自行组装到 Markdown/HTML 中
+        withPlaceholders = withPlaceholders.replace(/\{image\}/g, imageDataUrl);
+      } else {
+        withPlaceholders = withPlaceholders.replace(/\{image\}/g, '');
+      }
+    } catch (err) {
+      log.warn('获取截图失败:', err);
+      withPlaceholders = withPlaceholders.replace(/\{image\}/g, '');
+    }
+  }
+
+  // 3. 处理国际化
   const resolved = resolveI18nText(withPlaceholders, translations);
 
-  // 3. 检测内容类型
+  // 4. 检测内容类型
   const contentType = detectContentType(resolved);
 
-  // 4. 如果是直接文本，检查是否包含 Markdown 格式
+  // 5. 如果是直接文本，检查是否包含 Markdown 格式
   if (contentType === 'text') {
-    // 检测是否包含 Markdown 特征（链接、加粗、代码等）
+    // 检测是否包含 Markdown 特征（链接、加粗、代码、图片等）
     const hasMarkdown = /[*_`#\[\]!]/.test(resolved) || resolved.includes('\n');
     if (hasMarkdown) {
       const html = await markdownToHtmlWithLocalImages(resolved, basePath);
@@ -65,7 +87,7 @@ async function resolveFocusContent(
     return { message: resolved };
   }
 
-  // 5. 加载外部内容（URL 或文件）
+  // 6. 加载外部内容（URL 或文件）
   try {
     const loadedContent = await resolveContent(resolved, { translations, basePath });
     // 将加载的内容转换为 HTML（支持 Markdown）
@@ -176,8 +198,8 @@ async function handleCallback(
   const focus = details.focus as Record<string, string> | undefined;
   if (focus && focus[message]) {
     const focusTemplate = focus[message];
-    // 异步解析 focus 内容（支持国际化、URL、文件、Markdown）
-    const resolved = await resolveFocusContent(focusTemplate, details);
+    // 异步解析 focus 内容（支持国际化、URL、文件、Markdown、{image} 截图）
+    const resolved = await resolveFocusContent(focusTemplate, details, instanceId);
     addLog(instanceId, { type: 'focus', message: resolved.message, html: resolved.html });
     return;
   }
