@@ -227,6 +227,7 @@ export function OptionEditor({
     language,
     basePath,
     interfaceTranslations,
+    instances,
   } = useAppStore();
 
   const optionDef = projectInterface?.option?.[optionKey];
@@ -236,6 +237,13 @@ export function OptionEditor({
   const optionLabel = resolveI18nText(optionDef.label, langKey) || optionKey;
   const optionDescription = resolveI18nText(optionDef.description, langKey);
   const translations = interfaceTranslations[langKey];
+
+  // 获取当前任务的所有选项值（用于嵌套选项）
+  const allOptionValues = useMemo(() => {
+    const instance = instances.find((i) => i.id === instanceId);
+    const task = instance?.selectedTasks.find((t) => t.id === taskId);
+    return task?.optionValues || {};
+  }, [instances, instanceId, taskId]);
 
   // 获取当前选中的 case（用于渲染嵌套选项）
   const getSelectedCase = (): CaseItem | undefined => {
@@ -307,12 +315,7 @@ export function OptionEditor({
                 instanceId={instanceId}
                 taskId={taskId}
                 optionKey={nestedKey}
-                value={
-                  useAppStore
-                    .getState()
-                    .instances.find((i) => i.id === instanceId)
-                    ?.selectedTasks.find((t) => t.id === taskId)?.optionValues[nestedKey]
-                }
+                value={allOptionValues[nestedKey]}
                 depth={depth + 1}
                 disabled={disabled}
               />
@@ -410,12 +413,7 @@ export function OptionEditor({
               instanceId={instanceId}
               taskId={taskId}
               optionKey={nestedKey}
-              value={
-                useAppStore
-                  .getState()
-                  .instances.find((i) => i.id === instanceId)
-                  ?.selectedTasks.find((t) => t.id === taskId)?.optionValues[nestedKey]
-              }
+              value={allOptionValues[nestedKey]}
               depth={depth + 1}
               disabled={disabled}
             />
