@@ -1310,13 +1310,15 @@ pub async fn maa_start_tasks(
     tasks: Vec<TaskConfig>,
     agent_config: Option<AgentConfig>,
     cwd: String,
+    tcp_compat_mode: bool,
 ) -> Result<Vec<i64>, String> {
     info!("maa_start_tasks called");
     info!(
-        "instance_id: {}, tasks: {}, cwd: {}",
+        "instance_id: {}, tasks: {}, cwd: {}, tcp_compat_mode: {}",
         instance_id,
         tasks.len(),
-        cwd
+        cwd,
+        tcp_compat_mode
     );
 
     // 使用 SendPtr 包装原始指针，以便跨越 await 边界
@@ -1410,12 +1412,19 @@ pub async fn maa_start_tasks(
             debug!("[agent] MAA_LIBRARY lock acquired");
             let lib = guard.as_ref().ok_or("MaaFramework not initialized")?;
 
-            debug!("[agent] Calling maa_agent_client_create_v2...");
-            let agent_client = unsafe { (lib.maa_agent_client_create_v2)(std::ptr::null()) };
-            debug!(
-                "[agent] maa_agent_client_create_v2 returned: {:?}",
-                agent_client
-            );
+            // 根据 tcp_compat_mode 选择创建方式
+            let agent_client = if tcp_compat_mode {
+                debug!("[agent] Using TCP compat mode, calling maa_agent_client_create_tcp...");
+                let client = unsafe { (lib.maa_agent_client_create_tcp)(0) }; // port=0 自动选择端口
+                debug!("[agent] maa_agent_client_create_tcp returned: {:?}", client);
+                client
+            } else {
+                debug!("[agent] Calling maa_agent_client_create_v2...");
+                let client = unsafe { (lib.maa_agent_client_create_v2)(std::ptr::null()) };
+                debug!("[agent] maa_agent_client_create_v2 returned: {:?}", client);
+                client
+            };
+
             if agent_client.is_null() {
                 error!("[agent] Failed to create agent client (null pointer)");
                 return Err("Failed to create agent client".to_string());

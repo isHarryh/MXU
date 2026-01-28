@@ -122,6 +122,8 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
     setDevMode,
     saveDraw,
     setSaveDraw,
+    tcpCompatMode,
+    setTcpCompatMode,
     downloadStatus,
     downloadProgress,
     setDownloadStatus,
@@ -1763,6 +1765,31 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
                       className={clsx(
                         'absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200',
                         saveDraw ? 'translate-x-5' : 'translate-x-0',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* 通信兼容模式 */}
+                <div className="flex items-center justify-between pt-4 border-t border-border">
+                  <div className="flex items-center gap-3">
+                    <Network className="w-5 h-5 text-accent" />
+                    <div>
+                      <span className="font-medium text-text-primary">{t('debug.tcpCompatMode')}</span>
+                      <p className="text-xs text-text-muted mt-0.5">{t('debug.tcpCompatModeHint')}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setTcpCompatMode(!tcpCompatMode)}
+                    className={clsx(
+                      'relative w-11 h-6 rounded-full transition-colors flex-shrink-0',
+                      tcpCompatMode ? 'bg-accent' : 'bg-bg-active',
+                    )}
+                  >
+                    <span
+                      className={clsx(
+                        'absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200',
+                        tcpCompatMode ? 'translate-x-5' : 'translate-x-0',
                       )}
                     />
                   </button>

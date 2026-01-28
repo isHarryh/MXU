@@ -231,6 +231,7 @@ type FnMaaToolkitConfigInitOption = unsafe extern "C" fn(*const c_char, *const c
 
 // AgentClient
 type FnMaaAgentClientCreateV2 = unsafe extern "C" fn(*const MaaStringBuffer) -> *mut MaaAgentClient;
+type FnMaaAgentClientCreateTcp = unsafe extern "C" fn(u16) -> *mut MaaAgentClient;
 type FnMaaAgentClientDestroy = unsafe extern "C" fn(*mut MaaAgentClient);
 type FnMaaAgentClientIdentifier =
     unsafe extern "C" fn(*mut MaaAgentClient, *mut MaaStringBuffer) -> MaaBool;
@@ -328,6 +329,7 @@ pub struct MaaLibrary {
 
     // AgentClient
     pub maa_agent_client_create_v2: FnMaaAgentClientCreateV2,
+    pub maa_agent_client_create_tcp: FnMaaAgentClientCreateTcp,
     pub maa_agent_client_destroy: FnMaaAgentClientDestroy,
     pub maa_agent_client_identifier: FnMaaAgentClientIdentifier,
     pub maa_agent_client_bind_resource: FnMaaAgentClientBindResource,
@@ -584,6 +586,7 @@ impl MaaLibrary {
 
                 // AgentClient
                 maa_agent_client_create_v2: load_fn!(agent_client_lib, "MaaAgentClientCreateV2"),
+                maa_agent_client_create_tcp: load_fn!(agent_client_lib, "MaaAgentClientCreateTcp"),
                 maa_agent_client_destroy: load_fn!(agent_client_lib, "MaaAgentClientDestroy"),
                 maa_agent_client_identifier: load_fn!(agent_client_lib, "MaaAgentClientIdentifier"),
                 maa_agent_client_bind_resource: load_fn!(
